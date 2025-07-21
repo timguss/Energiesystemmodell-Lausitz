@@ -11,7 +11,7 @@ function setSpotlightAngleFromDegrees(spotlight, degrees) {
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x5182ed);
+renderer.setClearColor(0xffffff);
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -101,7 +101,7 @@ const bodyParts = [
   //'bein-rechts.glb',
   //'arm-rechts.glb',
   //'ImageToStl.com_Modelltisch-Basis+v42.glb',
-  "Tisch.glb",
+  "Tisch-neu.glb",
 ];
 
 const loader = new GLTFLoader().setPath("models/");
