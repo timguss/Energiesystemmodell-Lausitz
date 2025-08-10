@@ -1,10 +1,10 @@
 #include <HardwareSerial.h>
 
 // UART2 für RS232 (Pins anpassen)
-HardwareSerial RS232Serial(2);
+HardwareSerial RS232Serial(0);
 
-const int RXD2 = 16; // RS232 RX
-const int TXD2 = 17; // RS232 TX
+const int RXD2 = 1; // RS232 RX
+const int TXD2 = 3; // RS232 TX
 
 void setup() {
   Serial.begin(115200);                        // USB-Debug

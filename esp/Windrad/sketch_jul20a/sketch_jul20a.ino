@@ -1,4 +1,4 @@
-const int ledPins[] = {26, 27};
+const int ledPin = 26;    // nur eine LED
 const int motorPin = 22;
 const int buttonPin = 21;
 
@@ -21,10 +21,8 @@ void setup() {
   pinMode(motorPin, OUTPUT);
   digitalWrite(motorPin, LOW);
 
-  for (int i = 0; i < sizeof(ledPins) / sizeof(ledPins[0]); i++) {
-    pinMode(ledPins[i], OUTPUT);
-    digitalWrite(ledPins[i], LOW);
-  }
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
 }
 
 void loop() {
@@ -32,45 +30,36 @@ void loop() {
   bool reading = digitalRead(buttonPin);
 
   if (reading != lastReadButtonState) {
-    lastDebounceTime = millis();  // reset debounce timer
+    lastDebounceTime = millis();
   }
 
   if ((millis() - lastDebounceTime) > debounceDelay) {
     if (reading != lastStableButtonState) {
       lastStableButtonState = reading;
 
-      if (reading == LOW) {
-        // nur bei Wechsel auf gedrückt
+      if (reading == LOW) { // nur bei Druck
         isRunning = !isRunning;
         Serial.println(isRunning ? "Anlage EIN" : "Anlage AUS");
       }
     }
   }
-
   lastReadButtonState = reading;
 
   // --- Windradsteuerung ---
   if (isRunning) {
     digitalWrite(motorPin, HIGH);
 
-    // Synchrones Blinken
+    // Blinklogik
     unsigned long now = millis();
     unsigned long interval = ledState ? blinkOnTime : blinkOffTime;
 
     if (now - lastBlinkTime >= interval) {
       lastBlinkTime = now;
       ledState = !ledState;
-
-      for (int i = 0; i < sizeof(ledPins) / sizeof(ledPins[0]); i++) {
-        digitalWrite(ledPins[i], ledState ? HIGH : LOW);
-      }
+      digitalWrite(ledPin, ledState ? HIGH : LOW);
     }
-
   } else {
-    // Alles aus
     digitalWrite(motorPin, LOW);
-    for (int i = 0; i < sizeof(ledPins) / sizeof(ledPins[0]); i++) {
-      digitalWrite(ledPins[i], LOW);
-    }
+    digitalWrite(ledPin, LOW);
   }
 }
