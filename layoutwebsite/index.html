@@ -1,0 +1,1902 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Energiesystemmodell Lausitz</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      /* Header */
+      .header {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        color: white;
+        padding: 15px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+      }
+
+      .header h1 {
+        font-size: 24px;
+        font-weight: 600;
+      }
+
+      .logo {
+        width: 60px;
+        height: 60px;
+        background: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #2c3e50;
+        font-weight: bold;
+        font-size: 18px;
+      }
+
+      /* Green separator */
+      .green-separator {
+        height: 4px;
+        background: linear-gradient(90deg, #27ae60, #2ecc71, #27ae60);
+        box-shadow: 0 2px 10px rgba(39, 174, 96, 0.3);
+      }
+
+      /* Navigation */
+      .navigation {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 15px 20px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+      }
+
+      .nav-buttons {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+      }
+
+      .nav-btn {
+        background: linear-gradient(135deg, #3498db, #2980b9);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+      }
+
+      .nav-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+      }
+
+      .nav-btn.active {
+        background: linear-gradient(135deg, #27ae60, #2ecc71);
+        box-shadow: 0 4px 15px rgba(39, 174, 96, 0.3);
+      }
+
+      /* Main content */
+      .main-content {
+        flex: 1;
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+        width: 100%;
+        overflow-y: auto;
+        height: 0; /* This ensures flex takes control */
+      }
+
+      /* Home page specific */
+      .home-page {
+        text-align: center;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .welcome-text {
+        background: rgba(255, 255, 255, 0.9);
+        padding: 20px;
+        border-radius: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+        max-height: 150px;
+        overflow-y: auto;
+      }
+
+      .welcome-text h2 {
+        color: #2c3e50;
+        margin-bottom: 10px;
+        font-size: 24px;
+      }
+
+      .welcome-text p {
+        color: #7f8c8d;
+        line-height: 1.6;
+        font-size: 16px;
+      }
+
+      .model-container {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        padding: 15px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      #threejs-container {
+        width: 100%;
+        flex: 1;
+        border-radius: 15px;
+        overflow: hidden;
+        background: linear-gradient(135deg, #74b9ff, #0984e3);
+      }
+
+      /* Subpage layout */
+      .subpage {
+        display: none;
+        height: 100%;
+        flex-direction: column;
+      }
+
+      .subpage.active {
+        display: flex;
+      }
+
+      .subpage-header {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 20px;
+        border-radius: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+        max-height: 120px;
+        overflow-y: auto;
+      }
+
+      .subpage-header h2 {
+        color: #2c3e50;
+        margin-bottom: 10px;
+        font-size: 20px;
+      }
+
+      .menu-container {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+        flex-wrap: wrap;
+      }
+
+      .menu-tab {
+        background: linear-gradient(135deg, #6c5ce7, #a29bfe);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(108, 92, 231, 0.3);
+        flex: 1;
+        min-width: 120px;
+      }
+
+      .menu-tab:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(108, 92, 231, 0.4);
+      }
+
+      .menu-tab.active {
+        background: linear-gradient(135deg, #00b894, #00cec9);
+      }
+
+      .menu-content {
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        padding: 20px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+        margin-bottom: 15px;
+        height: calc(100vh - 400px);
+        overflow-y: auto;
+      }
+
+      .menu-section {
+        display: none;
+      }
+
+      .menu-section.active {
+        display: block;
+      }
+
+      /* Control elements */
+      .control-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+
+      .control-panel {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 15px;
+        border-left: 4px solid #27ae60;
+      }
+
+      .control-panel h4 {
+        color: #2c3e50;
+        margin-bottom: 15px;
+      }
+
+      .slider-container {
+        margin: 15px 0;
+      }
+
+      .slider-container label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #555;
+      }
+
+      .slider {
+        width: 100%;
+        height: 6px;
+        border-radius: 3px;
+        background: #ddd;
+        outline: none;
+        -webkit-appearance: none;
+        margin-bottom: 5px;
+      }
+
+      .slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #27ae60;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
+      }
+
+      .slider::-moz-range-thumb {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: #27ae60;
+        cursor: pointer;
+        border: none;
+      }
+
+      .button-group {
+        display: flex;
+        gap: 10px;
+        margin: 15px 0;
+        flex-wrap: wrap;
+      }
+
+      .control-btn {
+        background: linear-gradient(135deg, #e17055, #d63031);
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 20px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.3s ease;
+      }
+
+      .control-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 15px rgba(225, 112, 85, 0.3);
+      }
+
+      .control-btn.active {
+        background: linear-gradient(135deg, #27ae60, #2ecc71);
+      }
+
+      /* Charts */
+      .chart-container {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 15px;
+        margin: 15px 0;
+      }
+
+      .chart-placeholder {
+        width: 100%;
+        height: 180px;
+        background: linear-gradient(45deg, #ddd, #eee);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #666;
+        font-size: 14px;
+      }
+
+      /* Supporters section */
+      .supporters-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 15px;
+      }
+
+      .supporter-card {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 15px;
+        text-align: center;
+        border-left: 4px solid #27ae60;
+      }
+
+      .supporter-logo {
+        width: 60px;
+        height: 60px;
+        background: #27ae60;
+        border-radius: 50%;
+        margin: 0 auto 15px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-weight: bold;
+      }
+
+      /* Footer */
+      .footer {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 15px 20px;
+        backdrop-filter: blur(10px);
+      }
+
+      .sponsors {
+        max-width: 1200px;
+        margin: 0 auto;
+        text-align: center;
+      }
+
+      .sponsors h3 {
+        color: #2c3e50;
+        margin-bottom: 10px;
+        font-size: 16px;
+      }
+
+      .sponsor-logos {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+
+      .sponsor-logo {
+        width: 70px;
+        height: 50px;
+        background: #ecf0f1;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #7f8c8d;
+        font-size: 10px;
+        font-weight: bold;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+      }
+
+      .sponsor-logo:hover {
+        border-color: #27ae60;
+        transform: translateY(-2px);
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .header h1 {
+          font-size: 18px;
+        }
+
+        .main-content {
+          padding: 20px 15px;
+        }
+
+        .menu-container {
+          flex-direction: column;
+        }
+
+        .control-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .sponsor-logos {
+          gap: 15px;
+        }
+      }
+    </style>
+    <style>
+      /* ... Bisheriges CSS bleibt, Navigationsteil wird ersetzt ... */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      /* Header */
+      .header {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        color: white;
+        padding: 15px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        position: relative;
+        z-index: 1000;
+      }
+      .header h1 {
+        font-size: 24px;
+        font-weight: 600;
+        flex: 1;
+      }
+      /* Dropdown Navigation */
+      .dropdown-nav {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+      }
+      .dropdown-container {
+        position: relative;
+      }
+      .dropdown-button {
+        background: linear-gradient(135deg, #3498db, #2980b9);
+        color: white;
+        border: none;
+        padding: 12px 30px;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 16px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 250px;
+        justify-content: space-between;
+      }
+      .dropdown-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+      }
+      .dropdown-arrow {
+        transition: transform 0.3s ease;
+        font-size: 12px;
+      }
+      .dropdown-container.open .dropdown-arrow {
+        transform: rotate(180deg);
+      }
+      .dropdown-menu {
+        position: absolute;
+        top: calc(100% + 5px);
+        left: 0;
+        right: 0;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 15px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        overflow: hidden;
+        max-height: 0;
+        opacity: 0;
+        transform: translateY(-10px);
+        transition: all 0.3s ease;
+      }
+      .dropdown-container.open .dropdown-menu {
+        max-height: 400px;
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .dropdown-item {
+        display: block;
+        padding: 12px 20px;
+        color: #2c3e50;
+        text-decoration: none;
+        border: none;
+        background: none;
+        width: 100%;
+        text-align: left;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .dropdown-item:hover {
+        background: linear-gradient(135deg, #27ae60, #2ecc71);
+        color: white;
+      }
+      .dropdown-item.active {
+        background: linear-gradient(135deg, #3498db, #2980b9);
+        color: white;
+      }
+      .logo {
+        width: 60px;
+        height: 60px;
+        background: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #2c3e50;
+        font-weight: bold;
+        font-size: 18px;
+        flex-shrink: 0;
+      }
+      .green-separator {
+        height: 4px;
+        background: linear-gradient(90deg, #27ae60, #2ecc71, #27ae60);
+        box-shadow: 0 2px 10px rgba(39, 174, 96, 0.3);
+      }
+      /* Overlay zum Schließen */
+      .dropdown-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 999;
+        display: none;
+      }
+      .dropdown-container.open + .dropdown-overlay {
+        display: block;
+      }
+      /* Restliches CSS wie gehabt */
+      .main-content {
+        flex: 1;
+        padding: 20px;
+        max-width: 1200px;
+        margin: 0 auto;
+        width: 100%;
+        overflow-y: auto;
+        height: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Header mit Dropdown -->
+    <div class="header">
+      <h1 id="page-title">Energiesystemmodell Lausitz</h1>
+      <div class="dropdown-nav">
+        <div class="dropdown-container" id="dropdown">
+          <button class="dropdown-button" onclick="toggleDropdown()">
+            <span id="current-page">Startseite</span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+          <div class="dropdown-menu">
+            <button
+              class="dropdown-item active"
+              onclick="showPage('home', 'Startseite')"
+            >
+              🏠 Startseite
+            </button>
+            <button
+              class="dropdown-item"
+              onclick="showPage('solar', 'Solarkraftwerk')"
+            >
+              ☀️ Solarkraftwerk
+            </button>
+            <button
+              class="dropdown-item"
+              onclick="showPage('wind', 'Windkraftwerk')"
+            >
+              🌪️ Windkraftwerk
+            </button>
+            <button
+              class="dropdown-item"
+              onclick="showPage('coal', 'Kohlekraftwerk')"
+            >
+              🏭 Kohlekraftwerk
+            </button>
+            <button
+              class="dropdown-item"
+              onclick="showPage('gas', 'Gaskraftwerk')"
+            >
+              🔥 Gaskraftwerk
+            </button>
+            <button
+              class="dropdown-item"
+              onclick="showPage('biogas', 'Biogasanlage')"
+            >
+              🌱 Biogasanlage
+            </button>
+            <button
+              class="dropdown-item"
+              onclick="showPage('heatpump', 'Wärmepumpe')"
+            >
+              ♨️ Wärmepumpe
+            </button>
+            <button
+              class="dropdown-item"
+              onclick="showPage('hydrogen', 'Wasserstoffsystem')"
+            >
+              ⚡ Wasserstoffsystem
+            </button>
+            <button
+              class="dropdown-item"
+              onclick="showPage('battery', 'Batteriespeicher')"
+            >
+              🔋 Batteriespeicher
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="logo">ESM</div>
+    </div>
+    <div class="dropdown-overlay" onclick="closeDropdown()"></div>
+    <div class="green-separator"></div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Home Page -->
+      <div id="home" class="home-page">
+        <div class="welcome-text">
+          <h2>Willkommen zum interaktiven Energiesystemmodell</h2>
+          <p>
+            Erleben Sie den Strukturwandel in der Lausitz hautnah! Unser
+            physikalisch akkurates Modell zeigt die Komponenten des heutigen und
+            zukünftigen Energiesystems. Klicken Sie auf die verschiedenen
+            Anlagen im 3D-Modell oder nutzen Sie die Navigation oben, um mehr zu
+            erfahren.
+          </p>
+        </div>
+        <div class="model-container">
+          <div id="threejs-container">
+            <div
+              style="
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                color: white;
+                font-size: 18px;
+              "
+            >
+              🏭 3D-Modell wird hier geladen 🏭<br />
+              <small style="display: block; margin-top: 10px; opacity: 0.8">
+                Three.js Integration - Ihr bestehender Code kommt hier rein
+              </small>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Solar Page -->
+      <div id="solar" class="subpage">
+        <div class="subpage-header">
+          <h2>Solarkraftwerk</h2>
+          <p>
+            Das Solarkraftwerk besteht aus mehreren kleinen Solarzellen, die
+            elektrisch miteinander verschaltet sind und eine verwertbare
+            Gleichspannung erzeugen.
+          </p>
+        </div>
+
+        <div class="menu-container">
+          <button class="menu-tab active" onclick="showMenu('solar', 'info')">
+            Informationen
+          </button>
+          <button class="menu-tab" onclick="showMenu('solar', 'control')">
+            Steuerung
+          </button>
+          <button class="menu-tab" onclick="showMenu('solar', 'supporters')">
+            Unterstützer
+          </button>
+        </div>
+
+        <div class="menu-content">
+          <div id="solar-info" class="menu-section active">
+            <h3>Funktionsweise</h3>
+            <p>
+              Die Solarzellen wandeln Lichtenergie direkt in elektrische Energie
+              um. Die erzeugte Leistung wird kontinuierlich gemessen und in das
+              interne Stromnetz eingespeist. Die Anlage reagiert auf reale
+              Lichtverhältnisse und ermöglicht es, verschiedene Szenarien wie
+              Tageszeit oder Wetterbedingungen zu simulieren.
+            </p>
+            <br />
+            <h4>Technische Details:</h4>
+            <ul style="margin-left: 20px; line-height: 1.8">
+              <li>Mehrere verschaltete Solarzellen</li>
+              <li>Gleichspannungserzeugung</li>
+              <li>Echtzeitüberwachung der Leistung</li>
+              <li>Integration ins Gesamtsystem</li>
+            </ul>
+          </div>
+
+          <div id="solar-control" class="menu-section">
+            <div class="control-grid">
+              <div class="control-panel">
+                <h4>Leistungssteuerung</h4>
+                <div class="slider-container">
+                  <label
+                    >Sonneneinstrahlung:
+                    <span id="solar-sun-value">75%</span></label
+                  >
+                  <input
+                    type="range"
+                    class="slider"
+                    id="solar-sun"
+                    min="0"
+                    max="100"
+                    value="75"
+                    onchange="updateValue('solar-sun-value', this.value + '%')"
+                  />
+                </div>
+                <div class="button-group">
+                  <button class="control-btn active">Automatik</button>
+                  <button class="control-btn">Manuell</button>
+                </div>
+              </div>
+
+              <div class="control-panel">
+                <h4>Messwerte</h4>
+                <div
+                  style="
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    margin: 15px 0;
+                  "
+                >
+                  <div>Spannung: <strong>12.3 V</strong></div>
+                  <div>Strom: <strong>2.1 A</strong></div>
+                  <div>Leistung: <strong>25.8 W</strong></div>
+                  <div>Temperatur: <strong>45°C</strong></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="chart-container">
+              <h4>Leistungsdiagramm (24h)</h4>
+              <div class="chart-placeholder">
+                📊 Hier erscheint das Echtzeitdiagramm
+              </div>
+            </div>
+          </div>
+
+          <div id="solar-supporters" class="menu-section">
+            <h3>Lokale Unterstützer</h3>
+            <div class="supporters-grid">
+              <div class="supporter-card">
+                <div class="supporter-logo">SU</div>
+                <h4>SolarUnion Cottbus</h4>
+                <p>Bereitstellung der Solarzellen und technische Beratung</p>
+              </div>
+              <div class="supporter-card">
+                <div class="supporter-logo">EW</div>
+                <h4>Energiewerke Lausitz</h4>
+                <p>Fachliche Unterstützung bei der Systemintegration</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Wind Page -->
+      <div id="wind" class="subpage">
+        <div class="subpage-header">
+          <h2>Windkraftwerk</h2>
+          <p>
+            Das Windkraftwerk basiert auf einem funktionsorientierten Kompromiss
+            zwischen realistischer Darstellung und technischer Umsetzbarkeit.
+          </p>
+        </div>
+
+        <div class="menu-container">
+          <button class="menu-tab active" onclick="showMenu('wind', 'info')">
+            Informationen
+          </button>
+          <button class="menu-tab" onclick="showMenu('wind', 'control')">
+            Steuerung
+          </button>
+          <button class="menu-tab" onclick="showMenu('wind', 'supporters')">
+            Unterstützer
+          </button>
+        </div>
+
+        <div class="menu-content">
+          <div id="wind-info" class="menu-section active">
+            <h3>Funktionsweise</h3>
+            <p>
+              Das Windkraftwerk verwendet einen DC-Motor in der Nabe des
+              3D-gedruckten Windrades, der die Rotorblätter mit realistischer
+              Geschwindigkeit rotieren lässt. LED-Leuchten simulieren
+              Warnlichter und Kontrollfunktionen.
+            </p>
+            <br />
+            <h4>Besonderheiten:</h4>
+            <ul style="margin-left: 20px; line-height: 1.8">
+              <li>3D-gedruckte, abnehmbare Konstruktion</li>
+              <li>Integrierte LED-Warnlichter</li>
+              <li>Variable Rotorgeschwindigkeit</li>
+              <li>Transportfreundliches Design</li>
+            </ul>
+          </div>
+
+          <div id="wind-control" class="menu-section">
+            <div class="control-grid">
+              <div class="control-panel">
+                <h4>Windsteuerung</h4>
+                <div class="slider-container">
+                  <label
+                    >Windgeschwindigkeit:
+                    <span id="wind-speed-value">12 m/s</span></label
+                  >
+                  <input
+                    type="range"
+                    class="slider"
+                    id="wind-speed"
+                    min="0"
+                    max="25"
+                    value="12"
+                    onchange="updateValue('wind-speed-value', this.value + ' m/s')"
+                  />
+                </div>
+                <div class="button-group">
+                  <button class="control-btn">Start</button>
+                  <button class="control-btn active">Stopp</button>
+                  <button class="control-btn">Wartung</button>
+                </div>
+              </div>
+
+              <div class="control-panel">
+                <h4>Rotorsteuerung</h4>
+                <div class="slider-container">
+                  <label
+                    >Drehzahl: <span id="rotor-rpm-value">180 RPM</span></label
+                  >
+                  <input
+                    type="range"
+                    class="slider"
+                    id="rotor-rpm"
+                    min="0"
+                    max="300"
+                    value="180"
+                    onchange="updateValue('rotor-rpm-value', this.value + ' RPM')"
+                  />
+                </div>
+                <div style="margin: 15px 0">
+                  <label
+                    ><input type="checkbox" checked /> Warnlichter aktiv</label
+                  >
+                </div>
+              </div>
+            </div>
+
+            <div class="chart-container">
+              <h4>Energieproduktion</h4>
+              <div class="chart-placeholder">🌪️ Windleistungs-Diagramm</div>
+            </div>
+          </div>
+
+          <div id="wind-supporters" class="menu-section">
+            <h3>Lokale Unterstützer</h3>
+            <div class="supporters-grid">
+              <div class="supporter-card">
+                <div class="supporter-logo">WE</div>
+                <h4>WindEnergie Brandenburg</h4>
+                <p>Beratung zur Windkrafttechnologie</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coal Page -->
+      <div id="coal" class="subpage">
+        <div class="subpage-header">
+          <h2>Kohlekraftwerk</h2>
+          <p>
+            Das Kohlekraftwerk symbolisiert einen klassischen thermischen
+            Energieumwandler mit physikalisch nachvollziehbaren Prozessen.
+          </p>
+        </div>
+
+        <div class="menu-container">
+          <button class="menu-tab active" onclick="showMenu('coal', 'info')">
+            Informationen
+          </button>
+          <button class="menu-tab" onclick="showMenu('coal', 'control')">
+            Steuerung
+          </button>
+          <button class="menu-tab" onclick="showMenu('coal', 'supporters')">
+            Unterstützer
+          </button>
+        </div>
+
+        <div class="menu-content">
+          <div id="coal-info" class="menu-section active">
+            <h3>Funktionsweise</h3>
+            <p>
+              Das Modell basiert auf der Erhitzung von Wasser in einem
+              geschlossenen Kreislauf. Temperatur- und Drucksensoren messen die
+              Veränderungen während des Prozesses. Zur Sicherheit wird das
+              System elektrisch beheizt statt mit echter Kohle.
+            </p>
+            <br />
+            <h4>Sicherheitskonzept:</h4>
+            <ul style="margin-left: 20px; line-height: 1.8">
+              <li>Geschlossenes Wassersystem ohne Überdruck</li>
+              <li>Elektrische Heizung statt Verbrennung</li>
+              <li>Kontinuierliche Überwachung aller Parameter</li>
+              <li>Fachliche Unterstützung durch Bernd Horn OHG</li>
+            </ul>
+          </div>
+
+          <div id="coal-control" class="menu-section">
+            <div class="control-grid">
+              <div class="control-panel">
+                <h4>Heizungssteuerung</h4>
+                <div class="slider-container">
+                  <label
+                    >Heizleistung: <span id="coal-heat-value">60%</span></label
+                  >
+                  <input
+                    type="range"
+                    class="slider"
+                    id="coal-heat"
+                    min="0"
+                    max="100"
+                    value="60"
+                    onchange="updateValue('coal-heat-value', this.value + '%')"
+                  />
+                </div>
+                <div class="button-group">
+                  <button class="control-btn active">Heizung EIN</button>
+                  <button class="control-btn">Heizung AUS</button>
+                  <button
+                    class="control-btn"
+                    style="
+                      background: linear-gradient(135deg, #e74c3c, #c0392b);
+                    "
+                  >
+                    NOT-AUS
+                  </button>
+                </div>
+              </div>
+
+              <div class="control-panel">
+                <h4>Systemwerte</h4>
+                <div
+                  style="
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    margin: 15px 0;
+                  "
+                >
+                  <div>Temperatur: <strong>85°C</strong></div>
+                  <div>Druck: <strong>1.2 bar</strong></div>
+                  <div>Durchfluss: <strong>3.5 l/min</strong></div>
+                  <div>Leistung: <strong>45 kW</strong></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="chart-container">
+              <h4>Temperaturverlauf</h4>
+              <div class="chart-placeholder">🔥 Thermisches Diagramm</div>
+            </div>
+          </div>
+
+          <div id="coal-supporters" class="menu-section">
+            <h3>Lokale Unterstützer</h3>
+            <div class="supporters-grid">
+              <div class="supporter-card">
+                <div class="supporter-logo">BH</div>
+                <h4>Bernd Horn OHG</h4>
+                <p>Sicherheitstechnische Prüfung und Aufbauunterstützung</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gas Page -->
+      <div id="gas" class="subpage">
+        <div class="subpage-header">
+          <h2>Gaskraftwerk</h2>
+          <p>
+            Das Gaskraftwerk funktioniert analog zum Kohlekraftwerk, verwendet
+            jedoch einen Gasbrenner als kontrollierte Wärmequelle.
+          </p>
+        </div>
+
+        <div class="menu-container">
+          <button class="menu-tab active" onclick="showMenu('gas', 'info')">
+            Informationen
+          </button>
+          <button class="menu-tab" onclick="showMenu('gas', 'control')">
+            Steuerung
+          </button>
+          <button class="menu-tab" onclick="showMenu('gas', 'supporters')">
+            Unterstützer
+          </button>
+        </div>
+
+        <div class="menu-content">
+          <div id="gas-info" class="menu-section active">
+            <h3>Funktionsweise</h3>
+            <p>
+              Wasser wird in einem geschlossenen Kreislauf durch Gasverbrennung
+              erhitzt und über eine Pumpe durch eine Turbine geleitet. Die
+              erzeugte mechanische Energie wird über einen Generator in Strom
+              umgewandelt.
+            </p>
+            <br />
+            <h4>Sicherheitsausstattung:</h4>
+            <ul style="margin-left: 20px; line-height: 1.8">
+              <li>Manuell bedienbares Sicherheitsventil</li>
+              <li>Gasdurchflussmesser</li>
+              <li>NOT-AUS-Schalter für sofortigen Stopp</li>
+              <li>Möglichkeit für Biogas-Simulation</li>
+            </ul>
+          </div>
+
+          <div id="gas-control" class="menu-section">
+            <div class="control-grid">
+              <div class="control-panel">
+                <h4>Gassteuerung</h4>
+                <div class="slider-container">
+                  <label>Gaszufuhr: <span id="gas-flow-value">45%</span></label>
+                  <input
+                    type="range"
+                    class="slider"
+                    id="gas-flow"
+                    min="0"
+                    max="100"
+                    value="45"
+                    onchange="updateValue('gas-flow-value', this.value + '%')"
+                  />
+                </div>
+                <div class="button-group">
+                  <button class="control-btn">Erdgas</button>
+                  <button class="control-btn active">Biogas</button>
+                  <button
+                    class="control-btn"
+                    style="
+                      background: linear-gradient(135deg, #e74c3c, #c0392b);
+                    "
+                  >
+                    Ventil SCHLIESSSEN
+                  </button>
+                </div>
+              </div>
+
+              <div class="control-panel">
+                <h4>Betriebswerte</h4>
+                <div
+                  style="
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    margin: 15px 0;
+                  "
+                >
+                  <div>Gasdruck: <strong>2.1 bar</strong></div>
+                  <div>Durchfluss: <strong>12 m³/h</strong></div>
+                  <div>Flammentemp.: <strong>950°C</strong></div>
+                  <div>Leistung: <strong>38 kW</strong></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="chart-container">
+              <h4>Gasverbrauch & Leistung</h4>
+              <div class="chart-placeholder">⛽ Gas-Effizienz-Diagramm</div>
+            </div>
+          </div>
+
+          <div id="gas-supporters" class="menu-section">
+            <h3>Lokale Unterstützer</h3>
+            <div class="supporters-grid">
+              <div class="supporter-card">
+                <div class="supporter-logo">BH</div>
+                <h4>Bernd Horn OHG</h4>
+                <p>Gasanlagen-Sicherheit und technische Umsetzung</p>
+              </div>
+              <div class="supporter-card">
+                <div class="supporter-logo">GL</div>
+                <h4>GasLogistik Lausitz</h4>
+                <p>Beratung zu Gasversorgungssystemen</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Biogas Page -->
+      <div id="biogas" class="subpage">
+        <div class="subpage-header">
+          <h2>Biogasanlage</h2>
+          <p>
+            Die Biogasanlage wird als visuelles Funktionsmodell dargestellt, da
+            eine real funktionierende Anlage im Modellmaßstab
+            sicherheitstechnisch nicht umsetzbar ist.
+          </p>
+        </div>
+
+        <div class="menu-container">
+          <button class="menu-tab active" onclick="showMenu('biogas', 'info')">
+            Informationen
+          </button>
+          <button class="menu-tab" onclick="showMenu('biogas', 'control')">
+            Simulation
+          </button>
+          <button class="menu-tab" onclick="showMenu('biogas', 'supporters')">
+            Unterstützer
+          </button>
+        </div>
+
+        <div class="menu-content">
+          <div id="biogas-info" class="menu-section active">
+            <h3>Funktionsprinzip</h3>
+            <p>
+              Die Biogasanlage zeigt den biologischen Prozess der Vergärung
+              organischer Stoffe. Obwohl keine echte Gasproduktion erfolgt, wird
+              das Funktionsprinzip durch 3D-gedruckte Komponenten und erklärende
+              Visualisierungen verständlich dargestellt.
+            </p>
+            <br />
+            <h4>Warum nur Simulation?</h4>
+            <ul style="margin-left: 20px; line-height: 1.8">
+              <li>Spezielle Bakterienkulturen benötigen Laborumgebung</li>
+              <li>Lizenziertes Fachpersonal erforderlich</li>
+              <li>Gasausbeute im Kleinstmaßstab unzureichend</li>
+              <li>Sicherheitstechnische Beschränkungen</li>
+            </ul>
+          </div>
+
+          <div id="biogas-control" class="menu-section">
+            <div class="control-grid">
+              <div class="control-panel">
+                <h4>Vergärungsprozess (Simulation)</h4>
+                <div class="slider-container">
+                  <label
+                    >Substratmenge:
+                    <span id="biogas-substrate-value">70%</span></label
+                  >
+                  <input
+                    type="range"
+                    class="slider"
+                    id="biogas-substrate"
+                    min="0"
+                    max="100"
+                    value="70"
+                    onchange="updateValue('biogas-substrate-value', this.value + '%')"
+                  />
+                </div>
+                <div class="slider-container">
+                  <label
+                    >Temperatur: <span id="biogas-temp-value">38°C</span></label
+                  >
+                  <input
+                    type="range"
+                    class="slider"
+                    id="biogas-temp"
+                    min="20"
+                    max="60"
+                    value="38"
+                    onchange="updateValue('biogas-temp-value', this.value + '°C')"
+                  />
+                </div>
+                <div class="button-group">
+                  <button class="control-btn active">Rührwerk EIN</button>
+                  <button class="control-btn">Beschickung</button>
+                </div>
+              </div>
+
+              <div class="control-panel">
+                <h4>Simulierte Gasproduktion</h4>
+                <div
+                  style="
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    margin: 15px 0;
+                  "
+                >
+                  <div>Methangehalt: <strong>60%</strong></div>
+                  <div>CO₂-Gehalt: <strong>35%</strong></div>
+                  <div>Gasertrag: <strong>8.5 m³/d</strong></div>
+                  <div>Verweilzeit: <strong>25 Tage</strong></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="chart-container">
+              <h4>Simulierter Vergärungsprozess</h4>
+              <div class="chart-placeholder">🌱 Biogas-Produktionsdiagramm</div>
+            </div>
+          </div>
+
+          <div id="biogas-supporters" class="menu-section">
+            <h3>Lokale Unterstützer</h3>
+            <div class="supporters-grid">
+              <div class="supporter-card">
+                <div class="supporter-logo">BL</div>
+                <h4>Bioenergie Lausitz</h4>
+                <p>Beratung zu Biogasprozessen und Anlagentechnik</p>
+              </div>
+              <div class="supporter-card">
+                <div class="supporter-logo">AL</div>
+                <h4>Agrar Lausitz eV</h4>
+                <p>Substratbereitstellung und landwirtschaftliche Beratung</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Heat Pump Page -->
+      <div id="heatpump" class="subpage">
+        <div class="subpage-header">
+          <h2>Wärmepumpe (Seewasserwärmepumpe)</h2>
+          <p>
+            Die Seewasserwärmepumpe nutzt die konstante Temperatur von Gewässern
+            zur effizienten Wärmegewinnung.
+          </p>
+        </div>
+
+        <div class="menu-container">
+          <button
+            class="menu-tab active"
+            onclick="showMenu('heatpump', 'info')"
+          >
+            Informationen
+          </button>
+          <button class="menu-tab" onclick="showMenu('heatpump', 'control')">
+            Steuerung
+          </button>
+          <button class="menu-tab" onclick="showMenu('heatpump', 'supporters')">
+            Unterstützer
+          </button>
+        </div>
+
+        <div class="menu-content">
+          <div id="heatpump-info" class="menu-section active">
+            <h3>Funktionsweise</h3>
+            <p>
+              Die Seewasserwärmepumpe entzieht dem Seewasser Wärmeenergie und
+              hebt diese auf ein höheres Temperaturniveau an. Dies geschieht
+              über einen thermodynamischen Kreisprozess mit Verdampfung und
+              Kondensation eines Kältemittels.
+            </p>
+            <br />
+            <h4>Vorteile der Seewasserwärmepumpe:</h4>
+            <ul style="margin-left: 20px; line-height: 1.8">
+              <li>Konstante Wassertemperatur ganzjährig verfügbar</li>
+              <li>Hoher Wirkungsgrad (COP 4-6)</li>
+              <li>Unabhängig von Außentemperaturen</li>
+              <li>Besonders geeignet für die Lausitzer Seenlandschaft</li>
+            </ul>
+          </div>
+
+          <div id="heatpump-control" class="menu-section">
+            <div class="control-grid">
+              <div class="control-panel">
+                <h4>Betriebssteuerung</h4>
+                <div class="slider-container">
+                  <label
+                    >Vorlauftemperatur:
+                    <span id="hp-flow-temp-value">45°C</span></label
+                  >
+                  <input
+                    type="range"
+                    class="slider"
+                    id="hp-flow-temp"
+                    min="25"
+                    max="65"
+                    value="45"
+                    onchange="updateValue('hp-flow-temp-value', this.value + '°C')"
+                  />
+                </div>
+                <div class="slider-container">
+                  <label>Leistung: <span id="hp-power-value">75%</span></label>
+                  <input
+                    type="range"
+                    class="slider"
+                    id="hp-power"
+                    min="0"
+                    max="100"
+                    value="75"
+                    onchange="updateValue('hp-power-value', this.value + '%')"
+                  />
+                </div>
+                <div class="button-group">
+                  <button class="control-btn active">Heizen</button>
+                  <button class="control-btn">Kühlen</button>
+                  <button class="control-btn">Automatik</button>
+                </div>
+              </div>
+
+              <div class="control-panel">
+                <h4>Systemwerte</h4>
+                <div
+                  style="
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    margin: 15px 0;
+                  "
+                >
+                  <div>Seetemperatur: <strong>12°C</strong></div>
+                  <div>Vorlauf: <strong>45°C</strong></div>
+                  <div>COP: <strong>4.8</strong></div>
+                  <div>Heizleistung: <strong>28 kW</strong></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="chart-container">
+              <h4>Wärmepumpen-Effizienz</h4>
+              <div class="chart-placeholder">
+                ♨️ COP-Verlauf und Leistungsdiagramm
+              </div>
+            </div>
+          </div>
+
+          <div id="heatpump-supporters" class="menu-section">
+            <h3>Lokale Unterstützer</h3>
+            <div class="supporters-grid">
+              <div class="supporter-card">
+                <div class="supporter-logo">WL</div>
+                <h4>Wärmepumpen Lausitz</h4>
+                <p>Technische Beratung und Systemkomponenten</p>
+              </div>
+              <div class="supporter-card">
+                <div class="supporter-logo">SL</div>
+                <h4>Stadtwerke Lausitz</h4>
+                <p>Fernwärmenetz-Integration</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hydrogen Page -->
+      <div id="hydrogen" class="subpage">
+        <div class="subpage-header">
+          <h2>Wasserstoffsystem</h2>
+          <p>
+            Das Wasserstoffsystem umfasst Elektrolyseur, Brennstoffzelle,
+            Wasserstoffspeicher und Tankstelle für eine komplette
+            H₂-Wertschöpfungskette.
+          </p>
+        </div>
+
+        <div class="menu-container">
+          <button
+            class="menu-tab active"
+            onclick="showMenu('hydrogen', 'info')"
+          >
+            Informationen
+          </button>
+          <button class="menu-tab" onclick="showMenu('hydrogen', 'control')">
+            Steuerung
+          </button>
+          <button class="menu-tab" onclick="showMenu('hydrogen', 'supporters')">
+            Unterstützer
+          </button>
+        </div>
+
+        <div class="menu-content">
+          <div id="hydrogen-info" class="menu-section active">
+            <h3>Wasserstoff-Wertschöpfungskette</h3>
+            <p>
+              Das System zeigt die komplette Wasserstoffkette: Von der
+              Elektrolyse (Wasserspaltung mit Strom) über die Speicherung bis
+              zur Rückverstromung in der Brennstoffzelle. Zusätzlich wird eine
+              Wasserstofftankstelle für Fahrzeuge dargestellt.
+            </p>
+            <br />
+            <h4>Systemkomponenten:</h4>
+            <ul style="margin-left: 20px; line-height: 1.8">
+              <li>Elektrolyseur (Power-to-Gas)</li>
+              <li>Hochdruckwasserstoffspeicher</li>
+              <li>Brennstoffzelle (Gas-to-Power)</li>
+              <li>H₂-Tankstelle für Fahrzeuge</li>
+              <li>Wasserstoffnetz-Anbindung</li>
+            </ul>
+          </div>
+
+          <div id="hydrogen-control" class="menu-section">
+            <div class="control-grid">
+              <div class="control-panel">
+                <h4>Elektrolyse-Steuerung</h4>
+                <div class="slider-container">
+                  <label
+                    >Elektrolyse-Leistung:
+                    <span id="h2-electro-value">80%</span></label
+                  >
+                  <input
+                    type="range"
+                    class="slider"
+                    id="h2-electro"
+                    min="0"
+                    max="100"
+                    value="80"
+                    onchange="updateValue('h2-electro-value', this.value + '%')"
+                  />
+                </div>
+                <div class="button-group">
+                  <button class="control-btn active">Elektrolyse EIN</button>
+                  <button class="control-btn">Wartung</button>
+                </div>
+              </div>
+
+              <div class="control-panel">
+                <h4>Brennstoffzelle</h4>
+                <div class="slider-container">
+                  <label>BZ-Leistung: <span id="h2-fc-value">60%</span></label>
+                  <input
+                    type="range"
+                    class="slider"
+                    id="h2-fc"
+                    min="0"
+                    max="100"
+                    value="60"
+                    onchange="updateValue('h2-fc-value', this.value + '%')"
+                  />
+                </div>
+                <div class="button-group">
+                  <button class="control-btn active">BZ EIN</button>
+                  <button class="control-btn">Spülung</button>
+                </div>
+              </div>
+
+              <div class="control-panel">
+                <h4>Speicher & Tankstelle</h4>
+                <div
+                  style="
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    margin: 15px 0;
+                  "
+                >
+                  <div>H₂-Druck: <strong>350 bar</strong></div>
+                  <div>Füllstand: <strong>78%</strong></div>
+                  <div>Reinheit: <strong>99.9%</strong></div>
+                  <div>Tankvorgang: <strong>Bereit</strong></div>
+                </div>
+                <div class="button-group">
+                  <button class="control-btn">Fahrzeug tanken</button>
+                  <button class="control-btn">Netz einspeisen</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="chart-container">
+              <h4>Wasserstoff-Bilanz</h4>
+              <div class="chart-placeholder">
+                ⚡ H₂-Produktion vs. Verbrauch
+              </div>
+            </div>
+          </div>
+
+          <div id="hydrogen-supporters" class="menu-section">
+            <h3>Lokale Unterstützer</h3>
+            <div class="supporters-grid">
+              <div class="supporter-card">
+                <div class="supporter-logo">HL</div>
+                <h4>Hydrogen Lausitz</h4>
+                <p>Wasserstoff-Technologie und Systemintegration</p>
+              </div>
+              <div class="supporter-card">
+                <div class="supporter-logo">FI</div>
+                <h4>Fraunhofer IEG</h4>
+                <p>Wissenschaftliche Beratung und Forschungsunterstützung</p>
+              </div>
+              <div class="supporter-card">
+                <div class="supporter-logo">HM</div>
+                <h4>H2 Mobility</h4>
+                <p>Wasserstoff-Mobilität und Tankstellentechnik</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Battery Page -->
+      <div id="battery" class="subpage">
+        <div class="subpage-header">
+          <h2>Batteriespeicher</h2>
+          <p>
+            Der Batteriespeicher puffert Energieschwankungen im System und
+            ermöglicht die zeitversetzte Nutzung erneuerbarer Energien.
+          </p>
+        </div>
+
+        <div class="menu-container">
+          <button class="menu-tab active" onclick="showMenu('battery', 'info')">
+            Informationen
+          </button>
+          <button class="menu-tab" onclick="showMenu('battery', 'control')">
+            Steuerung
+          </button>
+          <button class="menu-tab" onclick="showMenu('battery', 'supporters')">
+            Unterstützer
+          </button>
+        </div>
+
+        <div class="menu-content">
+          <div id="battery-info" class="menu-section active">
+            <h3>Funktionsweise</h3>
+            <p>
+              Der Batteriespeicher nimmt überschüssige Energie auf, wenn mehr
+              produziert als verbraucht wird, und gibt sie bei Bedarf wieder ab.
+              Dies stabilisiert das Energiesystem und erhöht den Anteil
+              erneuerbarer Energien.
+            </p>
+            <br />
+            <h4>Technische Eigenschaften:</h4>
+            <ul style="margin-left: 20px; line-height: 1.8">
+              <li>Lithium-Ionen-Technologie (simuliert)</li>
+              <li>Schnelle Lade- und Entladezyklen</li>
+              <li>Intelligentes Batteriemanagement</li>
+              <li>Netzstabilisierende Funktion</li>
+              <li>Hoher Wirkungsgrad (>95%)</li>
+            </ul>
+          </div>
+
+          <div id="battery-control" class="menu-section">
+            <div class="control-grid">
+              <div class="control-panel">
+                <h4>Batteriesteuerung</h4>
+                <div class="slider-container">
+                  <label
+                    >Ladeleistung: <span id="bat-charge-value">65%</span></label
+                  >
+                  <input
+                    type="range"
+                    class="slider"
+                    id="bat-charge"
+                    min="0"
+                    max="100"
+                    value="65"
+                    onchange="updateValue('bat-charge-value', this.value + '%')"
+                  />
+                </div>
+                <div class="slider-container">
+                  <label
+                    >Entladeleistung:
+                    <span id="bat-discharge-value">40%</span></label
+                  >
+                  <input
+                    type="range"
+                    class="slider"
+                    id="bat-discharge"
+                    min="0"
+                    max="100"
+                    value="40"
+                    onchange="updateValue('bat-discharge-value', this.value + '%')"
+                  />
+                </div>
+                <div class="button-group">
+                  <button class="control-btn active">Automatik</button>
+                  <button class="control-btn">Laden</button>
+                  <button class="control-btn">Entladen</button>
+                </div>
+              </div>
+
+              <div class="control-panel">
+                <h4>Batteriezustand</h4>
+                <div
+                  style="
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    margin: 15px 0;
+                  "
+                >
+                  <div>Ladezustand: <strong>78%</strong></div>
+                  <div>Spannung: <strong>48.2 V</strong></div>
+                  <div>Temperatur: <strong>23°C</strong></div>
+                  <div>Zyklen: <strong>1.247</strong></div>
+                </div>
+                <div style="margin: 15px 0">
+                  <div
+                    style="
+                      background: #e9ecef;
+                      height: 20px;
+                      border-radius: 10px;
+                      overflow: hidden;
+                    "
+                  >
+                    <div
+                      style="
+                        background: linear-gradient(90deg, #27ae60, #2ecc71);
+                        width: 78%;
+                        height: 100%;
+                        border-radius: 10px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-size: 12px;
+                        font-weight: bold;
+                      "
+                    >
+                      78% geladen
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="chart-container">
+              <h4>Lade-/Entladezyklen</h4>
+              <div class="chart-placeholder">
+                🔋 Batterie-Performance-Diagramm
+              </div>
+            </div>
+          </div>
+
+          <div id="battery-supporters" class="menu-section">
+            <h3>Lokale Unterstützer</h3>
+            <div class="supporters-grid">
+              <div class="supporter-card">
+                <div class="supporter-logo">ES</div>
+                <h4>Energy Storage Cottbus</h4>
+                <p>Batterietechnologie und Speicherlösungen</p>
+              </div>
+              <div class="supporter-card">
+                <div class="supporter-logo">ET</div>
+                <h4>ElektroTechnik Brandenburg</h4>
+                <p>Batteriemanagement und Elektronik</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="green-separator"></div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div class="sponsors">
+        <h3>Gefördert und unterstützt von</h3>
+        <div class="sponsor-logos">
+          <div class="sponsor-logo">Max-Steenbeck-Gymnasium</div>
+          <div class="sponsor-logo">Land Brandenburg</div>
+          <div class="sponsor-logo">Fraunhofer IEG</div>
+          <div class="sponsor-logo">Wirtschaftsregion Lausitz</div>
+          <div class="sponsor-logo">Bernd Horn OHG</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // Page navigation
+      function showPage(pageId) {
+        // Hide all pages
+        const pages = document.querySelectorAll(".home-page, .subpage");
+        pages.forEach((page) => {
+          page.style.display = "none";
+          page.classList.remove("active");
+        });
+
+        // Show selected page
+        const targetPage = document.getElementById(pageId);
+        if (targetPage) {
+          targetPage.style.display = "block";
+          targetPage.classList.add("active");
+        }
+
+        // Update navigation buttons
+        const navBtns = document.querySelectorAll(".nav-btn");
+        navBtns.forEach((btn) => btn.classList.remove("active"));
+        event.target.classList.add("active");
+
+        // Update page title
+        const titles = {
+          home: "Energiesystemmodell Lausitz",
+          solar: "Solarkraftwerk - ESM Lausitz",
+          wind: "Windkraftwerk - ESM Lausitz",
+          coal: "Kohlekraftwerk - ESM Lausitz",
+          gas: "Gaskraftwerk - ESM Lausitz",
+          biogas: "Biogasanlage - ESM Lausitz",
+          heatpump: "Wärmepumpe - ESM Lausitz",
+          hydrogen: "Wasserstoffsystem - ESM Lausitz",
+          battery: "Batteriespeicher - ESM Lausitz",
+        };
+        document.getElementById("page-title").textContent =
+          titles[pageId] || "ESM Lausitz";
+      }
+
+      // Menu navigation for subpages
+      function showMenu(page, menuType) {
+        // Update menu tabs
+        const menuTabs = document.querySelectorAll(`#${page} .menu-tab`);
+        menuTabs.forEach((tab) => tab.classList.remove("active"));
+        event.target.classList.add("active");
+
+        // Update menu content
+        const menuSections = document.querySelectorAll(
+          `#${page} .menu-section`
+        );
+        menuSections.forEach((section) => {
+          section.style.display = "none";
+          section.classList.remove("active");
+        });
+
+        const targetSection = document.getElementById(`${page}-${menuType}`);
+        if (targetSection) {
+          targetSection.style.display = "block";
+          targetSection.classList.add("active");
+        }
+      }
+
+      // Update slider values
+      function updateValue(elementId, value) {
+        document.getElementById(elementId).textContent = value;
+      }
+
+      // Control button interactions
+      document.addEventListener("DOMContentLoaded", function () {
+        // Add click handlers for control buttons
+        const controlBtns = document.querySelectorAll(
+          '.control-btn:not([style*="linear-gradient(135deg, #e74c3c"])'
+        );
+        controlBtns.forEach((btn) => {
+          btn.addEventListener("click", function () {
+            // Toggle active state for buttons in the same group
+            const parent = this.parentElement;
+            const siblings = parent.querySelectorAll(
+              '.control-btn:not([style*="linear-gradient(135deg, #e74c3c"])'
+            );
+            siblings.forEach((sibling) => sibling.classList.remove("active"));
+            this.classList.add("active");
+          });
+        });
+
+        // Emergency stop buttons (red ones) - special handling
+        const emergencyBtns = document.querySelectorAll(
+          '.control-btn[style*="linear-gradient(135deg, #e74c3c"]'
+        );
+        emergencyBtns.forEach((btn) => {
+          btn.addEventListener("click", function () {
+            alert(
+              "NOT-AUS aktiviert! Alle Systeme werden sicher heruntergefahren."
+            );
+          });
+        });
+
+        // Simulate real-time data updates
+        setInterval(updateSimulatedValues, 2000);
+      });
+
+      // Simulate changing values
+      function updateSimulatedValues() {
+        const valueElements = [
+          {
+            selector: "#solar .control-panel div strong",
+            values: ["12.1 V", "12.5 V", "12.3 V"],
+            index: 0,
+          },
+          {
+            selector: "#wind .control-panel div strong",
+            values: ["178 RPM", "182 RPM", "180 RPM"],
+            index: 0,
+          },
+          {
+            selector: "#coal .control-panel div strong",
+            values: ["83°C", "87°C", "85°C"],
+            index: 0,
+          },
+          {
+            selector: "#gas .control-panel div strong",
+            values: ["2.0 bar", "2.2 bar", "2.1 bar"],
+            index: 0,
+          },
+          {
+            selector: "#hydrogen .control-panel div strong",
+            values: ["345 bar", "355 bar", "350 bar"],
+            index: 0,
+          },
+          {
+            selector: "#battery .control-panel div strong",
+            values: ["77%", "79%", "78%"],
+            index: 0,
+          },
+        ];
+
+        valueElements.forEach((item) => {
+          const elements = document.querySelectorAll(item.selector);
+          if (elements.length > 0) {
+            const randomIndex = Math.floor(Math.random() * item.values.length);
+            const randomElement =
+              elements[Math.floor(Math.random() * elements.length)];
+            randomElement.textContent = item.values[randomIndex];
+          }
+        });
+      }
+
+      // Initialize page
+      document.addEventListener("DOMContentLoaded", function () {
+        showPage("home");
+      });
+    </script>
+    <script>
+      function toggleDropdown() {
+        document.getElementById("dropdown").classList.toggle("open");
+      }
+      function closeDropdown() {
+        document.getElementById("dropdown").classList.remove("open");
+      }
+      function showPage(pageId, pageName) {
+        const pages = document.querySelectorAll(".home-page, .subpage");
+        pages.forEach((p) => {
+          p.style.display = "none";
+          p.classList.remove("active");
+        });
+        const targetPage = document.getElementById(pageId);
+        if (targetPage) {
+          targetPage.style.display = "block";
+          targetPage.classList.add("active");
+        }
+        document
+          .querySelectorAll(".dropdown-item")
+          .forEach((btn) => btn.classList.remove("active"));
+        event.target.classList.add("active");
+        document.getElementById("current-page").textContent = pageName;
+        closeDropdown();
+        const titles = {
+          home: "Energiesystemmodell Lausitz",
+          solar: "Solarkraftwerk - ESM Lausitz",
+          wind: "Windkraftwerk - ESM Lausitz",
+          coal: "Kohlekraftwerk - ESM Lausitz",
+          gas: "Gaskraftwerk - ESM Lausitz",
+          biogas: "Biogasanlage - ESM Lausitz",
+          heatpump: "Wärmepumpe - ESM Lausitz",
+          hydrogen: "Wasserstoffsystem - ESM Lausitz",
+          battery: "Batteriespeicher - ESM Lausitz",
+        };
+        document.getElementById("page-title").textContent =
+          titles[pageId] || "ESM Lausitz";
+      }
+    </script>
+  </body>
+</html>
