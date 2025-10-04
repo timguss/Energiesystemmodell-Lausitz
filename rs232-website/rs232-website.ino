@@ -1,239 +1,195 @@
-/*
-  ESP32 ProPar Web-Interface - STA (kein AP)
-  - verbindet mit normalem WLAN (Station mode)
-  - startet WebUI auf Port 80
-  - initialisiert Serial2 (UART2) NUR NACHDEM WLAN verbunden ist
-  - sendet eingegebenen ProPar-ASCII-Strings an Serial2 und liest Antwort
-  - Serielle Ausgabe: 115200 Baud
-  Anpassungen: WIFI_SSID / WIFI_PASS, ggf. RX/TX Pins ändern
-*/
-
 #include <WiFi.h>
 #include <WebServer.h>
-#include <esp_event.h>
+#include <math.h>
 
-///// Benutzerkonfiguration /////
-const char* WIFI_SSID = "Fritz-Box-SG";               
-const char* WIFI_PASS = "floppy1905Frettchen";       
+///// BENUTZER KONFIGURATION /////
+const char* WIFI_SSID = "Fritz-Box-SG";
+const char* WIFI_PASS = "floppy1905Frettchen";
 
-const int UART2_RX_PIN = 16; // ESP RX  <- Modul TX
-const int UART2_TX_PIN = 17; // ESP TX  -> Modul RX
-const unsigned long DEFAULT_REPLY_TIMEOUT = 500; // ms
-/////////////////////////////////
+///// RELAIS KONFIGURATION /////
+const bool ACTIVE_LOW = true; // LOW = an
+struct RelayConfig {
+  uint8_t pin;
+  const char* title;
+};
+const uint8_t RELAY_COUNT = 8;
+RelayConfig RELAYS[RELAY_COUNT] = {
+  {19, "Ventil - 1"},
+  {21, "Ventil - 2"},
+  {22, "Heizstab"},
+  {23, "Zünder"},
+  {32, "Gasventil"},
+  {33, "Kühler"},
+  {25, "MFC - fehlt noch"},
+  {26, "unbelegt"}
+};
 
+///// NTC SENSOR KONFIGURATION /////
+const int adcPin = 34;
+const float Vcc = 3.3;
+const float Rf = 10000.0;     // fester Widerstand
+const float R0 = 10000.0;     // NTC bei 25°C
+const float T0_K = 298.15;    // 25°C in Kelvin
+const float beta = 3950.0;
+
+///// RS232 / SERIAL2 KONFIGURATION /////
+const bool SERIAL2_ENABLED = false; // SAFE TEST, standardmäßig aus
+const int UART2_RX_PIN = 16;
+const int UART2_TX_PIN = 17;
+HardwareSerial MySerial(2);
+
+///// WEB SERVER /////
 WebServer server(80);
-HardwareSerial MySerial(2); // UART2
-bool serial2Started = false;
 
-// HTML Web UI (einfach)
-const char index_html[] PROGMEM = R"rawliteral(
-<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ESP32 ProPar RS232 (STA)</title>
-<style>
-body{font-family:system-ui,Arial; padding:12px; background:#f5f7fb}
-.card{background:#fff;padding:12px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.06)}
-input,button{font-size:15px;padding:8px}
-input[type=text]{width:100%;font-family:monospace}
-pre{background:#111;color:#0f0;padding:10px;border-radius:6px;overflow:auto}
-label{font-weight:600}
-</style>
-</head>
-<body>
-<div class="card">
-  <h2>ProPar RS232 — Senden & Empfangen</h2>
-  <p>Beispiel: <code>:06030401210120</code></p>
+///// HILFSFUNKTIONEN RELAIS /////
+int physToLogical(int physVal) {
+  return ACTIVE_LOW ? (physVal == LOW ? 1 : 0) : (physVal == HIGH ? 1 : 0);
+}
+int logicalToPhys(int logical) {
+  return ACTIVE_LOW ? (logical == 1 ? LOW : HIGH) : (logical == 1 ? HIGH : LOW);
+}
 
-  <label for="cmd">Befehl (ASCII-Hex):</label><br>
-  <input id="cmd" type="text" placeholder=":06030401210120">
-
-  <div style="margin-top:8px">
-    <label for="timeout">Timeout (ms):</label>
-    <input id="timeout" type="number" value="500" style="width:120px">
-  </div>
-
-  <div style="margin-top:12px">
-    <button id="sendBtn">Send</button>
-  </div>
-
-  <h3 style="margin-top:14px">Protokoll</h3>
-  <div class="card">
-    <div><strong>Sent:</strong><pre id="sent">—</pre></div>
-    <div style="margin-top:8px"><strong>Reply:</strong><pre id="reply">—</pre></div>
-  </div>
-</div>
-
-<script>
-document.getElementById('sendBtn').addEventListener('click', async () => {
-  const cmd = document.getElementById('cmd').value.trim();
-  const timeout = parseInt(document.getElementById('timeout').value) || 500;
-  if (!cmd) { alert('Bitte Befehl eingeben.'); return; }
-  document.getElementById('sent').textContent = cmd;
-  document.getElementById('reply').textContent = 'sende...';
-  try {
-    const r = await fetch('/send', {
-      method: 'POST',
-      headers: {'Content-Type': 'text/plain'},
-      body: JSON.stringify({cmd: cmd, timeout: timeout})
-    });
-    const txt = await r.text();
-    document.getElementById('reply').textContent = txt || '(keine Antwort)';
-  } catch (e) {
-    document.getElementById('reply').textContent = 'Fehler: ' + e;
+String getRelaysJSON() {
+  String s="{";
+  for(uint8_t i=0;i<RELAY_COUNT;i++){
+    int phys = digitalRead(RELEYS[i].pin);
+    s += "\"r"+String(i)+"\":"+String(physToLogical(phys))+",";
+    s += "\"t"+String(i)+"\":\""+String(RELAYS[i].title)+"\"";
+    if(i<RELAY_COUNT-1) s+=",";
   }
-});
-</script>
-</body>
-</html>
-)rawliteral";
-
-// Hilfsfunktion: liest verfügbare Bytes bis timeout_ms (blockierend)
-String readSerialResponse(unsigned long timeout_ms = DEFAULT_REPLY_TIMEOUT) {
-  unsigned long start = millis();
-  String s = "";
-  while (millis() - start < timeout_ms) {
-    while (MySerial.available()) {
-      char c = (char)MySerial.read();
-      s += c;
-    }
-    // kein delay, sonst Zeichenverlust möglich
-  }
+  s+="}";
   return s;
 }
 
-// HTTP: Index
-void handleIndex() {
-  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-  server.send(200, "text/html", index_html);
+///// HILFSFUNKTIONEN NTC /////
+float readVoltage() {
+  int adc = analogRead(adcPin);
+  return (float)adc / 4095.0 * Vcc;
 }
 
-// HTTP: /send (POST)
-void handleSend() {
-  if (!server.hasArg("plain")) {
-    server.send(400, "text/plain", "Kein Body empfangen");
-    return;
-  }
-  String body = server.arg("plain");
-  String cmd = "";
-  unsigned long timeout = DEFAULT_REPLY_TIMEOUT;
-
-  int pCmd = body.indexOf("\"cmd\"");
-  if (pCmd >= 0) {
-    int col = body.indexOf(':', pCmd);
-    int q1 = body.indexOf('"', col+1);
-    int q2 = body.indexOf('"', q1+1);
-    if (q1 >= 0 && q2 > q1) cmd = body.substring(q1+1, q2);
-  }
-  int pT = body.indexOf("\"timeout\"");
-  if (pT >= 0) {
-    int col = body.indexOf(':', pT);
-    int endpos = body.indexOf('}', col+1);
-    if (endpos > col) {
-      String tstr = body.substring(col+1, endpos);
-      tstr.trim();
-      timeout = (unsigned long)tstr.toInt();
-    }
-  }
-
-  if (cmd.length() == 0) {
-    server.send(400, "text/plain", "Kein cmd im Body gefunden");
-    return;
-  }
-
-  // CR+LF anhängen
-  if (!cmd.endsWith("\r\n")) cmd += "\r\n";
-
-  if (!serial2Started) {
-    server.send(500, "text/plain", "Serial2 nicht initialisiert (WLAN noch nicht verbunden).");
-    return;
-  }
-
-  // Senden & Debug
-  Serial.print("[Web] Sent: "); Serial.println(cmd);
-  MySerial.print(cmd);
-  String resp = readSerialResponse(timeout);
-  Serial.print("[Web] Reply: "); Serial.println(resp);
-
-  if (resp.length() == 0) server.send(200, "text/plain", "(keine Antwort innerhalb Timeout)");
-  else server.send(200, "text/plain", resp);
+float readR_NTC() {
+  float v = readVoltage();
+  if(v <= 0.0001 || v >= Vcc-0.0001) return -1.0; // Sensor nicht angeschlossen oder Fehler
+  return Rf * (v / (Vcc - v));
 }
 
-// WiFi Event
-void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
-  switch (event) {
-    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-      Serial.print("[WIFI] connected. IP: ");
-      Serial.println(WiFi.localIP());
-      break;
-    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-      Serial.println("[WIFI] disconnected. Reconnect...");
-      WiFi.reconnect();
-      break;
-    default:
-      break;
-  }
+float ntcToCelsius(float Rntc) {
+  if(Rntc <= 0) return NAN;
+  float invT = (1.0f / T0_K) + (1.0f / beta) * log(Rntc / R0);
+  float T = 1.0f / invT;
+  return T - 273.15f;
 }
 
-void startServerHandlers() {
-  server.on("/", HTTP_GET, handleIndex);
-  server.on("/send", HTTP_POST, handleSend);
-  server.begin();
-  Serial.println("HTTP server started (handler registered).");
+///// WEB HANDLER /////
+void handleRoot() {
+  String page = "<!doctype html><html><head><meta charset='utf-8'>"
+                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                "<title>ESP32 Kombi</title>"
+                "<style>"
+                "body{font-family:Arial;padding:20px;max-width:800px;margin:auto}"
+                ".slot{display:flex;align-items:center;justify-content:space-between;padding:12px;margin:10px 0;background:#f2f2f2;border-radius:8px}"
+                ".label{font-weight:600}.switch{position:relative;display:inline-block;width:60px;height:34px}"
+                ".switch input{display:none}"
+                ".slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;transition:.3s;border-radius:34px}"
+                ".slider:before{position:absolute;content:'';height:26px;width:26px;left:4px;top:4px;background:white;transition:.3s;border-radius:50%}"
+                "input:checked + .slider{background:#4caf50}"
+                "input:checked + .slider:before{transform:translateX(26px)}"
+                ".state{margin-left:10px;font-size:14px;color:#333}"
+                "</style></head><body><h2>ESP32 Kombi (Relais & Temperatur)</h2>";
+
+  for(uint8_t i=0;i<RELAY_COUNT;i++){
+    int phys = digitalRead(RELAYS[i].pin);
+    int logical = physToLogical(phys);
+    page += "<div class='slot'><div class='label'>"+String(RELAYS[i].title)
+            +" <span id='s"+String(i)+"' class='state'>"+String(logical==1?"AN":"AUS")+"</span></div>"
+            +"<label class='switch'><input id='t"+String(i)+"' type='checkbox' "
+            +(logical==1?"checked":"")+"><span class='slider'></span></label></div>";
+  }
+
+  page += "<div style='margin-top:20px'><h3>Temperatur</h3>"
+          "<div>Sensor: <span id='temp'>--</span> °C</div>"
+          "<div>Rntc: <span id='rntc'>--</span> Ω</div></div>";
+
+  page += "<script>"
+          "const count="+String(RELAY_COUNT)+";"
+          "for(let i=0;i<count;i++){"
+          "document.getElementById('t'+i).addEventListener('change',function(){"
+          "let v=this.checked?1:0;"
+          "fetch('/set?idx='+i+'&val='+v).then(()=>setTimeout(refresh,100));"
+          "});"
+          "}"
+          "function refresh(){"
+          "fetch('/state').then(r=>r.json()).then(obj=>{"
+          "for(let i=0;i<count;i++){"
+          "let st=obj['r'+i];"
+          "let cb=document.getElementById('t'+i);"
+          "let s=document.getElementById('s'+i);"
+          "if(cb) cb.checked=(st===1);"
+          "if(s) s.textContent=(st===1?'AN':'AUS');"
+          "}"
+          "document.getElementById('temp').textContent=obj.temp;"
+          "document.getElementById('rntc').textContent=obj.rntc;"
+          "});"
+          "}"
+          "setInterval(refresh,1500);"
+          "</script></body></html>";
+  server.send(200,"text/html",page);
+}
+
+void handleSet() {
+  if(!server.hasArg("idx")||!server.hasArg("val")){ server.send(400,"text/plain","missing args"); return; }
+  int idx = server.arg("idx").toInt();
+  int val = server.arg("val").toInt();
+  if(idx<0 || idx>=RELAY_COUNT || (val!=0 && val!=1)){ server.send(400,"text/plain","invalid args"); return; }
+  digitalWrite(RELAYS[idx].pin, logicalToPhys(val));
+  server.send(200,"text/plain","ok");
+}
+
+void handleState() {
+  float Rntc = readR_NTC();
+  float tempC = ntcToCelsius(Rntc);
+  String sTemp = isnan(tempC) ? "NO SENSOR" : String(tempC,2);
+  String sRntc = (Rntc<0) ? "NO SENSOR" : String(Rntc,1);
+  String s="{\"temp\":"+sTemp+",\"rntc\":"+sRntc;
+  for(uint8_t i=0;i<RELAY_COUNT;i++){
+    s+=",\"r"+String(i)+"\":"+String(physToLogical(digitalRead(RELAYS[i].pin)));
+  }
+  s+="}";
+  server.send(200,"application/json",s);
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(50);
-  Serial.println("\n=== ESP32 ProPar RS232 (STA mode) starting ===");
+  Serial.println("\n=== ESP32 Kombi (SAFE) starting ===");
 
-  WiFi.onEvent(onWiFiEvent);
+  // Relais Pins
+  for(uint8_t i=0;i<RELAY_COUNT;i++){
+    pinMode(RELAYS[i].pin, OUTPUT);
+    digitalWrite(RELAYS[i].pin, logicalToPhys(0));
+  }
 
-  WiFi.mode(WIFI_STA);
+  // WLAN
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Serial.printf("Connecting to WiFi SSID: %s ... (blocking wait up to 15s)\n", WIFI_SSID);
+  Serial.print("Connecting to WiFi SSID: "); Serial.print(WIFI_SSID); Serial.println(" ... (non-blocking)");
 
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println();
+  // Server Handlers
+  server.on("/", handleRoot);
+  server.on("/set", handleSet);
+  server.on("/state", handleState);
+  server.begin();
+  Serial.println("HTTP server started.");
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("Connected. IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("WARN: Nicht verbunden (Server startet trotzdem).");
-  }
-
-  startServerHandlers();
-
-  // Serial2 erst jetzt starten
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("Initializing Serial2 (UART2) NOW");
+  // Serial2 nur optional
+  if(SERIAL2_ENABLED){
     MySerial.begin(38400, SERIAL_8N1, UART2_RX_PIN, UART2_TX_PIN);
-    serial2Started = true;
-    Serial.println("Serial2 initialized (RX=" + String(UART2_RX_PIN) + ", TX=" + String(UART2_TX_PIN) + ")");
+    Serial.println("Serial2 initialized.");
   } else {
-    serial2Started = false;
-    Serial.println("Serial2 deferred until WiFi connects.");
+    Serial.println("Serial2 DISABLED (SAFE).");
   }
 
-  Serial.println("Setup finished.");
+  Serial.println("Setup done.");
 }
 
 void loop() {
   server.handleClient();
-
-  if (!serial2Started && WiFi.status() == WL_CONNECTED) {
-    Serial.println("WiFi connected later - now initializing Serial2");
-    MySerial.begin(38400, SERIAL_8N1, UART2_RX_PIN, UART2_TX_PIN);
-    serial2Started = true;
-    Serial.println("Serial2 initialized (delayed).");
-  }
-
-  delay(5);
 }
