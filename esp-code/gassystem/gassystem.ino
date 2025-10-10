@@ -33,19 +33,37 @@ bool serial2Started = false;
 bool rs232Enabled = true;
 
 void setup_wifi() {
+  Serial.print("🔌 Connecting to WiFi: "); Serial.println(WIFI_SSID);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while(WiFi.status() != WL_CONNECTED) delay(500);
+  int c=0;
+  while(WiFi.status() != WL_CONNECTED){
+    delay(500);
+    Serial.print(".");
+    c++;
+    if(c>30){
+      Serial.println("❌ WiFi timeout, restarting...");
+      ESP.restart();
+    }
+  }
+  Serial.print("✅ Connected. IP: "); Serial.println(WiFi.localIP());
 }
 
 void connectMQTT() {
   client.setServer(MQTT_SERVER, 1883);
   client.setCallback(callback);
   while (!client.connected()) {
-    client.connect(deviceID, MQTT_USER, MQTT_PASS);
-    delay(500);
+    if(WiFi.status()!=WL_CONNECTED) setup_wifi();
+    Serial.print("🔄 Connecting to MQTT...");
+    if(client.connect(deviceID, MQTT_USER, MQTT_PASS)){
+      Serial.println("✅ Connected!");
+      client.subscribe(("rpi/"+String(deviceID)+"/set").c_str());
+      client.subscribe(("rpi/"+String(deviceID)+"/send").c_str());
+    } else {
+      Serial.print("❌ failed, rc=");
+      Serial.println(client.state());
+      delay(2000);
+    }
   }
-  client.subscribe(("rpi/"+String(deviceID)+"/set").c_str());
-  client.subscribe(("rpi/"+String(deviceID)+"/send").c_str());
 }
 
 float readVoltage(){ return (float)analogRead(adcPin)/4095.0*Vcc; }
@@ -78,15 +96,17 @@ void callback(char* topic, byte* payload, unsigned int length){
   for(int i=0;i<length;i++) msg += (char)payload[i];
 
   String t = String(topic);
+  Serial.print("📨 Received MQTT: "); Serial.print(t); Serial.print(" -> "); Serial.println(msg);
+
   if(t.endsWith("/set")){
-    // Format: "idx:val", z.B. "2:1"
     int colon = msg.indexOf(':');
     if(colon>0){
       int idx = msg.substring(0,colon).toInt();
       int val = msg.substring(colon+1).toInt();
-      if(idx>=0 && idx<8) {
+      if(idx>=0 && idx<8){
         relayState[idx] = val;
         digitalWrite(RELAYS[idx].pin, val?LOW:HIGH); // ACTIVE_LOW
+        Serial.print("💡 Relay "); Serial.print(idx); Serial.print(" set to "); Serial.println(val);
         publishStatus();
       }
     }
@@ -99,6 +119,7 @@ void callback(char* topic, byte* payload, unsigned int length){
       while(millis()-start < 500){
         while(MySerial.available()) resp += (char)MySerial.read();
       }
+      Serial.print("📤 RS232 reply: "); Serial.println(resp);
       client.publish(("esp/"+String(deviceID)+"/reply").c_str(), resp.c_str());
     }
   }
@@ -106,19 +127,21 @@ void callback(char* topic, byte* payload, unsigned int length){
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("=== ESP1 Starting ===");
+
   for(int i=0;i<8;i++){
     pinMode(RELAYS[i].pin, OUTPUT);
     digitalWrite(RELAYS[i].pin, HIGH);
   }
 
   analogReadResolution(12); analogSetAttenuation(ADC_11db);
-  WiFi.begin(WIFI_SSID,WIFI_PASS);
-  while(WiFi.status()!=WL_CONNECTED) delay(500);
-  client.setServer(MQTT_SERVER, 1883);
-  client.setCallback(callback);
+
+  setup_wifi();
+  connectMQTT();
 
   MySerial.begin(38400,SERIAL_8N1,16,17);
   serial2Started = true;
+  Serial.println("Serial2 started.");
 }
 
 void loop() {
@@ -129,6 +152,7 @@ void loop() {
     lastTempMillis = millis();
     cachedRntc = readR_NTC();
     cachedTempC = ntcToCelsius(cachedRntc);
+    Serial.print("🌡 Temp: "); Serial.print(cachedTempC); Serial.print(" °C | Rntc: "); Serial.println(cachedRntc);
     publishStatus();
   }
 }
