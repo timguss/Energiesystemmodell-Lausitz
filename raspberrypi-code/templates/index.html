@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>ESP Dashboard</title>
+<style>
+body{font-family:Arial;padding:14px;background:#f5f7fb}
+.card{background:#fff;padding:12px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.06);margin-bottom:14px}
+.slot{display:flex;justify-content:space-between;padding:12px;margin:8px 0;background:#f2f2f2;border-radius:8px}
+</style>
+</head>
+<body>
+<h1>Aktive ESPs</h1>
+{% for device, data in devices.items() %}
+<div class="card">
+  <h2>{{device}}</h2>
+  <div><strong>Temperatur:</strong> {{data.temp if 'temp' in data else '--'}} °C</div>
+  <div><strong>Relais:</strong></div>
+  {% if 'relays' in data %}
+    {% for idx, val in data.relays.items() %}
+      <div class="slot">{{idx}} : {{val}}</div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endfor %}
+</body>
+</html>
