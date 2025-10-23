@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module fritzingVersion="0.9.5d.2020-02-07.CD-548-0-3d61c58" icon="Mine.png">
+    <title>My Parts</title>
+    <instances>
+        <instance moduleIdRef="WS2812_RGB_LED_strip_b9573a31cb8645f06da0e27be1b6a859_2" modelIndex="5771" path="C:/Users/User/Documents/Fritzing/parts/contrib/WS2812_RGB_LED_strip_b9573a31cb8645f06da0e27be1b6a859_2.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="prefix0000_2cb51fd70589e337b39b50d50f2b8696_8" modelIndex="7487" path="C:/Users/User/Documents/Fritzing/parts/contrib/prefix0000_2cb51fd70589e337b39b50d50f2b8696_8.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="RS485_MAX3485_96460e9060d60d520eec1125527a5501_4" modelIndex="7494" path="C:/Users/User/Documents/Fritzing/parts/contrib/RS485_MAX3485_96460e9060d60d520eec1125527a5501_4.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="raspberry-pi-5_1" modelIndex="7616" path="C:/Users/User/Documents/Fritzing/parts/contrib/raspberry-pi-5_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Arduino Uno (Rev3)-TopMount_a06726b4bb226c94a6dce39253625f70_1" modelIndex="11519" path="C:/Users/User/Documents/Fritzing/parts/contrib/Arduino Uno (Rev3)-TopMount_a06726b4bb226c94a6dce39253625f70_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Voltage Sensor 25V_240c28ee211244542de5b5725cd2a537_1" modelIndex="1827117" path="C:/Users/User/Documents/Fritzing/parts/contrib/Voltage Sensor 25V_240c28ee211244542de5b5725cd2a537_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="voltage_sensor_module_52b131f76a0fbd2ab4b6584cbbb3fdc1_1" modelIndex="1827125" path="C:/Users/User/Documents/Fritzing/parts/contrib/voltage_sensor_module_52b131f76a0fbd2ab4b6584cbbb3fdc1_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="ESP32-HiLetgo" modelIndex="1827891" path="C:/Users/User/Documents/Fritzing/parts/contrib/ESP32-HiLetgo.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="2ChannelRelay_129217c8947f3fd792dd6483a1c71e2e_24" modelIndex="1827901" path="C:/Users/User/Documents/Fritzing/parts/user/2ChannelRelay_129217c8947f3fd792dd6483a1c71e2e_24.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="1-chan-5v-relay-module_1" modelIndex="1827906" path="C:/Users/User/Documents/Fritzing/parts/contrib/1-chan-5v-relay-module_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="S4A_EDU_295a638d2eff112f7b0707b26a2df99f_1" modelIndex="1830023" path="C:/Users/User/Documents/Fritzing/parts/contrib/S4A_EDU_295a638d2eff112f7b0707b26a2df99f_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="generic_sip_5_300mil" modelIndex="1832023" path="C:/Users/User/AppData/Roaming/Fritzing/partfactory/bf710c431fe2e4b1e1fb06859f2f4cee/core/generic_sip_5_300mil.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="generic_sip_5_300mil" modelIndex="1832027" path="C:/Users/User/AppData/Roaming/Fritzing/partfactory/bf710c431fe2e4b1e1fb06859f2f4cee/core/generic_sip_5_300mil.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="generic_sip_5_300mil" modelIndex="1832028" path="C:/Users/User/AppData/Roaming/Fritzing/partfactory/bf710c431fe2e4b1e1fb06859f2f4cee/core/generic_sip_5_300mil.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="generic_sip_5_300mil" modelIndex="1832029" path="C:/Users/User/AppData/Roaming/Fritzing/partfactory/bf710c431fe2e4b1e1fb06859f2f4cee/core/generic_sip_5_300mil.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Netzteil_12V_f7dd53caa1c11e869c0ae91f19900612_1" modelIndex="1832047" path="C:/Users/User/Documents/Fritzing/parts/contrib/Netzteil_12V_f7dd53caa1c11e869c0ae91f19900612_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Netzteil_24V_ef898b37bcdc86c6da02c7f11d449c85_1" modelIndex="1832061" path="C:/Users/User/Documents/Fritzing/parts/contrib/Netzteil_24V_ef898b37bcdc86c6da02c7f11d449c85_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="230V Bauteil_c4695f2e6f935d9696ab705c318b59ec_1" modelIndex="1832071" path="C:/Users/User/Documents/Fritzing/parts/contrib/230V Bauteil_c4695f2e6f935d9696ab705c318b59ec_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Ventil-3-Wege_8e3e9148fb0977bc41027fc00b156eeb_1" modelIndex="1832079" path="C:/Users/User/Documents/Fritzing/parts/contrib/Ventil-3-Wege_8e3e9148fb0977bc41027fc00b156eeb_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Spannungsversorgung 230V_6ef50f3714a5ecf20f19954cbc7c75dd_1" modelIndex="1832097" path="C:/Users/User/Documents/Fritzing/parts/contrib/Spannungsversorgung 230V_6ef50f3714a5ecf20f19954cbc7c75dd_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="wago-221-412_1" modelIndex="1832315" path="C:/Users/User/Documents/Fritzing/parts/user/wago-221-412_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="wago-221-413_1" modelIndex="1832317" path="C:/Users/User/Documents/Fritzing/parts/user/wago-221-413_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="wago-221-415_1" modelIndex="1832319" path="C:/Users/User/Documents/Fritzing/parts/user/wago-221-415_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="wago-221-2411_1" modelIndex="1832321" path="C:/Users/User/Documents/Fritzing/parts/user/wago-221-2411_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Netzteil_5V_23035c9f77ca8fdeb64c1ee57828d5b3_1" modelIndex="1832545" path="C:/Users/User/Documents/Fritzing/parts/contrib/Netzteil_5V_23035c9f77ca8fdeb64c1ee57828d5b3_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Conntector 2 Pin_f4d80e9031ee166c71f9c22bb10dd6db_1" modelIndex="1832749" path="C:/Users/User/Documents/Fritzing/parts/contrib/Conntector 2 Pin_f4d80e9031ee166c71f9c22bb10dd6db_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="MFC_7bf95eb7d4084390218ea7ee1ce185a4_1" modelIndex="1832939" path="C:/Users/User/Documents/Fritzing/parts/contrib/MFC_7bf95eb7d4084390218ea7ee1ce185a4_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Ventil 12V_7837ff37342fa65c03373323667b78fa_1" modelIndex="1833374" path="C:/Users/User/Documents/Fritzing/parts/contrib/Ventil 12V_7837ff37342fa65c03373323667b78fa_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Windrad-Connector_a5648b1005c7999cdf002d1edf61ceb6_1" modelIndex="85410088" path="C:/Users/User/Documents/Fritzing/parts/contrib/Windrad-Connector_a5648b1005c7999cdf002d1edf61ceb6_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Windrad_29977922442ded24206988bb95b8411f_1" modelIndex="85410102" path="C:/Users/User/Documents/Fritzing/parts/contrib/Windrad_29977922442ded24206988bb95b8411f_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Kühler_4086766c8d87e50e491abf8cdfc2fd9a_1" modelIndex="85410944" path="C:/Users/User/Documents/Fritzing/parts/contrib/K№hler_4086766c8d87e50e491abf8cdfc2fd9a_1.fzp">
+            <views/>
+        </instance>
+        <instance moduleIdRef="Pumpe_9a794b1a3389e4571b0c070aa452efa1_1" modelIndex="85410971" path="C:/Users/User/Documents/Fritzing/parts/contrib/Pumpe_9a794b1a3389e4571b0c070aa452efa1_1.fzp">
+            <views/>
+        </instance>
+    </instances>
+</module>
