@@ -1,4 +1,4 @@
-// ESP3_windraeder_zug.ino
+// ESP3_windraeder_zug_no_button.ino
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
@@ -11,17 +11,10 @@ const IPAddress HOST_IP(192,168,4,1); // Host (AP) IP
 // ===== Windrad Pins & Timing =====
 const int ledPin = 26;    // LED
 const int motorPin = 22;  // Motor (HIGH = drehen)
-const int buttonPin = 21; // Taster (INPUT_PULLUP)
 
 bool isRunning = false;
-bool lastStableButtonState = HIGH;
-bool lastReadButtonState = HIGH;
-unsigned long lastDebounceTime = 0;
-const unsigned long debounceDelay = 50;
-
-const unsigned long blinkOnTime = 300;
+const unsigned long blinkOnTime  = 300;
 const unsigned long blinkOffTime = 1000;
-
 unsigned long lastBlinkTime = 0;
 bool ledState = false;
 
@@ -29,7 +22,6 @@ bool ledState = false;
 const int pwmPin = 25;
 const int pwmFreq = 5000;     // Hz
 const int pwmResolution = 8;  // bits (0-255)
-const int pwmChannel = 0;
 int pwmValue = 0;
 
 // ===== Webserver =====
@@ -60,7 +52,7 @@ void applyStateToHardware(){
 void setTrainPWM(int v){
   v = constrain(v, 0, (1<<pwmResolution)-1);
   pwmValue = v;
-  ledcWrite(pwmChannel, pwmValue);
+  ledcWrite(pwmPin, pwmValue);  // Verwendet jetzt den Pin statt Channel
 }
 
 // ===== HTTP Handlers =====
@@ -83,7 +75,7 @@ void handleSet(){
   server.send(200,"text/plain","ok");
 }
 
-// POST /toggle  -> toggles windrad
+// POST /toggle  -> toggles windrad (useful from UI)
 void handleToggle(){
   isRunning = !isRunning;
   applyStateToHardware();
@@ -121,7 +113,7 @@ String htmlPage(){
   html += "<div style='margin-top:8px'><button onclick='stopTrain()'>Stop</button></div>";
   html += "</div>";
   html += "<script>";
-  html += "async function fetchState(){ let r = await fetch('/state'); let j = await r.json(); document.getElementById('wind').innerText = j.running? 'AN':'AUS'; document.getElementById('val').innerText = j.pwm; document.getElementById('slider').value = j.pwm; }";
+  html += "async function fetchState(){ let r = await fetch('/state'); if(!r.ok) return; let j = await r.json(); document.getElementById('wind').innerText = j.running? 'AN':'AUS'; document.getElementById('val').innerText = j.pwm; document.getElementById('slider').value = j.pwm; }";
   html += "function toggleWind(){ fetch('/toggle',{method:'POST'}).then(fetchState); }";
   html += "function updatePWM(v){ document.getElementById('val').innerText = v; fetch('/train?pwm='+v); }";
   html += "function stopTrain(){ fetch('/train/stop').then(()=>{document.getElementById('val').innerText='0'; document.getElementById('slider').value=0;}); }";
@@ -151,15 +143,13 @@ void setup(){
   Serial.begin(115200);
 
   // wind pins
-  pinMode(buttonPin, INPUT_PULLUP);
   pinMode(motorPin, OUTPUT);
   digitalWrite(motorPin, LOW);
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW);
 
-  // train PWM setup (proper ledc API)
-  ledcSetup(pwmChannel, pwmFreq, pwmResolution);
-  ledcAttachPin(pwmPin, pwmChannel);
+  // train PWM setup (neue ledc API - ledcAttach ersetzt ledcSetup + ledcAttachPin)
+  ledcAttach(pwmPin, pwmFreq, pwmResolution);
   setTrainPWM(0);
 
   // WiFi
@@ -186,24 +176,6 @@ void setup(){
 
 void loop(){
   server.handleClient();
-
-  // Button debounce + toggle (LOW = pressed)
-  bool reading = digitalRead(buttonPin);
-  if(reading != lastReadButtonState){
-    lastDebounceTime = millis();
-  }
-  if((millis() - lastDebounceTime) > debounceDelay){
-    if(reading != lastStableButtonState){
-      lastStableButtonState = reading;
-      if(reading == LOW){
-        isRunning = !isRunning;
-        applyStateToHardware();
-        Serial.println(isRunning ? "Anlage EIN" : "Anlage AUS");
-        registerAtHost();
-      }
-    }
-  }
-  lastReadButtonState = reading;
 
   // Blink & motor control (only when running)
   if(isRunning){

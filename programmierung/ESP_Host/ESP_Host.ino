@@ -39,7 +39,6 @@ String listClientsJSON(){
   return s;
 }
 
-// /register  POST body JSON: {"name":"esp1","ip":"192.168.4.5"}
 void handleRegister(){
   if(server.method() != HTTP_POST){ server.send(405,"text/plain","method"); return; }
   String body = server.arg("plain");
@@ -62,16 +61,11 @@ void handleRegister(){
   server.send(200,"application/json","{\"status\":\"ok\"}");
 }
 
-// GET /clients
 void handleClients(){ server.send(200,"application/json",listClientsJSON()); }
 
-// POST /forward  body JSON:
-// { "target":"esp1", "method":"GET", "path":"/state", "body":"" }
-// Host will call http://<target-ip><path> and return response body and code.
 void handleForward(){
   if(server.method() != HTTP_POST){ server.send(405,"text/plain","method"); return; }
   String b = server.arg("plain");
-  // simple parsing (no JSON lib)
   auto extract = [&](const char* key)->String{
     int idx = b.indexOf(String("\"")+String(key)+String("\""));
     if(idx<0) return "";
@@ -86,7 +80,6 @@ void handleForward(){
   String target = extract("target");
   String method = extract("method");
   String path = extract("path");
-  // body may be complex. We will take everything after "body":
   String body="";
   int bi = b.indexOf("\"body\"");
   if(bi>=0){
@@ -121,7 +114,6 @@ void handleForward(){
     else { server.send(400,"text/plain","unsupported method"); http.end(); return; }
   }
   String out = "{\"code\":"+String(code)+",\"body\":\"";
-  // escape quotes and newlines minimally
   for(size_t i=0;i<resp.length();++i){
     char c = resp[i];
     if(c=='\\') out += "\\\\";
@@ -154,7 +146,6 @@ void setup(){
 
 void loop(){
   server.handleClient();
-  // prune old clients
   unsigned long now = millis();
   for(int i=0;i<MAX_CLIENTS;i++){
     if(clients[i].name.length() && now - clients[i].lastSeen > 120000){
