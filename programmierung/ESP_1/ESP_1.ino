@@ -140,13 +140,23 @@ void setup(){
 
 void loop(){
   server.handleClient();
+  
   unsigned long now = millis();
+  
+  // Temperatur alle 1 Sekunde messen
   if(now - lastTempMillis >= TEMP_INTERVAL){
     lastTempMillis = now;
     float Rntc = readR_NTC();
     float tempC = ntcToCelsius(Rntc);
-    cachedTempC = tempC; cachedRntc = Rntc;
-    registerAtHost();
+    cachedTempC = tempC; 
+    cachedRntc = Rntc;
     Serial.printf("Temp: %.2f C | R: %.0f\n", tempC, Rntc);
+  }
+  
+  // Host-Registrierung SEPARAT alle 60 Sekunden
+  static unsigned long lastReg = 0;
+  if(now - lastReg > 60000){
+    lastReg = now;
+    registerAtHost();
   }
 }
