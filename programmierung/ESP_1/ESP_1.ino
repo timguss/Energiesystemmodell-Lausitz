@@ -1,4 +1,4 @@
-// ESP1_api.ino
+// ESP1_api.ino - Komplett mit RS232 Fix
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
@@ -64,30 +64,107 @@ void handleTemp(){
 }
 
 void handleSend(){
-  if(!rs232Enabled){ server.send(400,"text/plain","RS232 deaktiviert"); return; }
-  if(!serial2Started){ server.send(500,"text/plain","Serial2 nicht initialisiert."); return; }
-  if(!server.hasArg("plain")){ server.send(400,"text/plain","Kein Body"); return; }
+  if(!rs232Enabled){ 
+    server.send(400,"text/plain","RS232 deaktiviert"); 
+    return; 
+  }
+  if(!serial2Started){ 
+    server.send(500,"text/plain","Serial2 nicht initialisiert."); 
+    return; 
+  }
+  if(!server.hasArg("plain")){ 
+    server.send(400,"text/plain","Kein Body"); 
+    return; 
+  }
 
   String body = server.arg("plain");
   int idx1 = body.indexOf("\"cmd\"");
   int idx2 = body.indexOf("\"timeout\"");
-  String cmd = ""; unsigned long timeout = DEFAULT_REPLY_TIMEOUT;
+  
+  String cmd = ""; 
+  unsigned long timeout = DEFAULT_REPLY_TIMEOUT;
+  
+  // Parse cmd
   if(idx1>=0){
     int q1 = body.indexOf("\"", idx1+5);
     int q2 = body.indexOf("\"", q1+1);
     if(q1>=0 && q2>q1) cmd = body.substring(q1+1,q2);
   }
+  
+  // Parse timeout
   if(idx2>=0){
     int colon = body.indexOf(":", idx2);
     int comma = body.indexOf("}", colon);
-    if(colon>=0 && comma>colon){ String tstr = body.substring(colon+1,comma); tstr.trim(); timeout = tstr.toInt(); }
+    if(colon>=0 && comma>colon){ 
+      String tstr = body.substring(colon+1,comma); 
+      tstr.trim(); 
+      timeout = tstr.toInt(); 
+    }
   }
-  if(cmd.length()==0){ server.send(400,"text/plain","Kein cmd gefunden"); return; }
-  if(!cmd.endsWith("\r\n")) cmd += "\r\n";
+  
+  if(cmd.length()==0){ 
+    server.send(400,"text/plain","Kein cmd gefunden"); 
+    return; 
+  }
+  
+  // WICHTIG: Stelle sicher dass cmd mit \r\n endet (ProPar Protokoll!)
+  if(!cmd.endsWith("\r\n")) {
+    // Prüfe ob nur \r oder nur \n am Ende
+    if(cmd.endsWith("\r") || cmd.endsWith("\n")){
+      // Entferne einzelnes Zeichen und füge beides hinzu
+      cmd = cmd.substring(0, cmd.length()-1);
+    }
+    cmd += "\r\n";
+  }
+  
+  // Debug-Ausgabe
+  Serial.print("RS232 TX: ");
+  for(size_t i=0; i<cmd.length(); i++){
+    if(cmd[i] == '\r') Serial.print("\\r");
+    else if(cmd[i] == '\n') Serial.print("\\n");
+    else Serial.print(cmd[i]);
+  }
+  Serial.println();
+  
+  // Sende Befehl an MFC
   MySerial.print(cmd);
-  String resp=""; unsigned long start=millis();
-  while(millis()-start < timeout){ while(MySerial.available()) resp += (char)MySerial.read(); }
-  server.send(200,"text/plain", resp.length()?resp:"(keine Antwort)");
+  
+  // Warte auf Antwort
+  String resp = "";
+  unsigned long start = millis();
+  
+  while(millis() - start < timeout){
+    while(MySerial.available()){
+      char c = MySerial.read();
+      resp += c;
+      
+      // ProPar Antwort endet mit \r\n
+      if(resp.endsWith("\r\n")){
+        // Vollständige Antwort erhalten
+        Serial.print("RS232 RX: ");
+        for(size_t i=0; i<resp.length(); i++){
+          if(resp[i] == '\r') Serial.print("\\r");
+          else if(resp[i] == '\n') Serial.print("\\n");
+          else Serial.print(resp[i]);
+        }
+        Serial.println();
+        
+        server.send(200, "text/plain", resp);
+        return;
+      }
+    }
+    delay(10); // Kleine Pause um CPU zu entlasten
+  }
+  
+  // Timeout
+  if(resp.length() > 0){
+    Serial.print("RS232 RX (Timeout): ");
+    Serial.println(resp);
+    server.send(200, "text/plain", resp);
+  } else {
+    Serial.println("RS232 RX: (keine Antwort)");
+    server.send(200, "text/plain", "(keine Antwort)");
+  }
 }
 
 // --- New: meta endpoint to provide relay names/count
@@ -122,7 +199,7 @@ void startServer(){
   server.on("/set",   HTTP_GET, handleSet);
   server.on("/temp",  HTTP_GET, handleTemp);
   server.on("/send",  HTTP_POST, handleSend);
-  server.on("/meta",  HTTP_GET, handleMeta); // new
+  server.on("/meta",  HTTP_GET, handleMeta);
   server.begin();
 }
 
@@ -153,7 +230,7 @@ void loop(){
     Serial.printf("Temp: %.2f C | R: %.0f\n", tempC, Rntc);
   }
   
-  // Host-Registrierung SEPARAT alle 60 Sekunden
+  // Host-Registrierung separat alle 60 Sekunden
   static unsigned long lastReg = 0;
   if(now - lastReg > 60000){
     lastReg = now;

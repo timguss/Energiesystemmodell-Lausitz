@@ -3,9 +3,10 @@
 
 from flask import Flask, jsonify, request, render_template_string
 import requests, json, time
+from functools import lru_cache
 
 HOST = "http://192.168.4.1"   # Host-ESP
-HTTP_TIMEOUT = 8
+HTTP_TIMEOUT = 3  # Reduziert von 8 auf 3 Sekunden
 
 # Mapping global relay index -> (device, device_idx)
 GLOBAL_MAP = {
@@ -16,28 +17,38 @@ GLOBAL_MAP = {
 
 app = Flask(__name__, static_folder=None)
 
-def host_get(path):
-    url = HOST + path
-    r = requests.get(url, timeout=HTTP_TIMEOUT)
-    r.raise_for_status()
+def host_get(path, timeout=HTTP_TIMEOUT):
     try:
-        return r.json()
-    except:
-        return r.text
+        url = HOST + path
+        r = requests.get(url, timeout=timeout)
+        r.raise_for_status()
+        try:
+            return r.json()
+        except:
+            return r.text
+    except requests.exceptions.Timeout:
+        raise Exception("Timeout: Host antwortet nicht")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Verbindungsfehler: {str(e)}")
 
-def host_post(path, data=None):
-    url = HOST + path
-    headers = {"Content-Type":"application/json"}
-    r = requests.post(url, data=data, headers=headers, timeout=HTTP_TIMEOUT)
-    r.raise_for_status()
+def host_post(path, data=None, timeout=HTTP_TIMEOUT):
     try:
-        return r.json()
-    except:
-        return r.text
+        url = HOST + path
+        headers = {"Content-Type":"application/json"}
+        r = requests.post(url, data=data, headers=headers, timeout=timeout)
+        r.raise_for_status()
+        try:
+            return r.json()
+        except:
+            return r.text
+    except requests.exceptions.Timeout:
+        raise Exception("Timeout: Host antwortet nicht")
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Verbindungsfehler: {str(e)}")
 
-def host_forward(target, method, path, body_str=""):
+def host_forward(target, method, path, body_str="", timeout=HTTP_TIMEOUT):
     payload = {"target": target, "method": method, "path": path, "body": body_str}
-    resp = host_post("/forward", json.dumps(payload))
+    resp = host_post("/forward", json.dumps(payload), timeout=timeout)
     # resp expected {"code":int, "body":"..."} where body may be a JSON string from device
     if isinstance(resp, dict):
         code = resp.get("code", -1)
@@ -54,15 +65,26 @@ def host_forward(target, method, path, body_str=""):
 @app.route("/api/clients")
 def api_clients():
     try:
-        return jsonify(host_get("/clients"))
+        return jsonify(host_get("/clients", timeout=2))
     except Exception as e:
         return jsonify({"error": str(e)}), 502
+
+# Cache für Meta-Daten (ändern sich nicht)
+meta_cache = {}
+meta_cache_time = {}
 
 @app.route("/api/device_meta/<device>")
 def api_device_meta(device):
     try:
-        # query device /meta via host
-        res = host_forward(device, "GET", "/meta")
+        # Cache für 60 Sekunden
+        now = time.time()
+        if device in meta_cache and (now - meta_cache_time.get(device, 0)) < 60:
+            return jsonify(meta_cache[device])
+        
+        res = host_forward(device, "GET", "/meta", timeout=2)
+        if res.get("code") == 200:
+            meta_cache[device] = res
+            meta_cache_time[device] = now
         return jsonify(res)
     except Exception as e:
         return jsonify({"error": str(e)}), 502
@@ -70,7 +92,7 @@ def api_device_meta(device):
 @app.route("/api/device_state/<device>")
 def api_device_state(device):
     try:
-        res = host_forward(device, "GET", "/state")
+        res = host_forward(device, "GET", "/state", timeout=2)
         return jsonify(res)
     except Exception as e:
         return jsonify({"error": str(e)}), 502
@@ -85,11 +107,12 @@ def api_relay_set():
     device, idx = GLOBAL_MAP[gi]
     path = f"/set?idx={idx}&val={val}"
     try:
-        return jsonify(host_forward(device, "GET", path))
+        # Kürzerer Timeout für schnellere Rückmeldung
+        return jsonify(host_forward(device, "GET", path, timeout=2))
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
-# RS232 and esp3 endpoints unchanged (kept minimal)
+# RS232 and esp3 endpoints
 @app.route("/api/rs232", methods=["POST"])
 def api_rs232():
     j = request.get_json(force=True)
@@ -99,7 +122,7 @@ def api_rs232():
         return jsonify({"error":"no cmd"}), 400
     inner = json.dumps({"cmd":cmd, "timeout":timeout})
     try:
-        res = host_forward("esp1", "POST", "/send", inner)
+        res = host_forward("esp1", "POST", "/send", inner, timeout=5)
         return jsonify(res)
     except Exception as e:
         return jsonify({"error": str(e)}), 502
@@ -107,7 +130,7 @@ def api_rs232():
 @app.route("/api/esp3/state")
 def api_esp3_state():
     try:
-        return jsonify(host_forward("esp3", "GET", "/state"))
+        return jsonify(host_forward("esp3", "GET", "/state", timeout=2))
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
@@ -116,7 +139,7 @@ def api_esp3_set_wind():
     j = request.get_json(force=True)
     val = 1 if int(j.get("val",0)) else 0
     try:
-        return jsonify(host_forward("esp3", "GET", f"/set?val={val}"))
+        return jsonify(host_forward("esp3", "GET", f"/set?val={val}", timeout=2))
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
@@ -126,11 +149,11 @@ def api_esp3_set_pwm():
     pwm = int(j.get("pwm",0))
     pwm = max(0, min(255, pwm))
     try:
-        return jsonify(host_forward("esp3", "GET", f"/train?pwm={pwm}"))
+        return jsonify(host_forward("esp3", "GET", f"/train?pwm={pwm}", timeout=2))
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
-# --- Frontend (grouped relays with names and slider/toggles) ---
+# --- Frontend (optimiert) ---
 INDEX_HTML = r'''
 <!doctype html>
 <html>
@@ -149,7 +172,10 @@ body{font-family:Arial;margin:12px;background:#f4f6f8;color:#111}
 .slider:before{content:'';position:absolute;height:24px;width:24px;left:3px;top:3px;background:white;border-radius:50%;transition:.2s}
 .switch input:checked + .slider{background:#4caf50}
 .switch input:checked + .slider:before{transform:translateX(24px)}
+.switch input:disabled + .slider{opacity:0.5;cursor:not-allowed}
 .small{font-size:0.9em;color:#666}
+.error{color:#d32f2f;font-size:0.85em;margin-top:4px}
+.loading{opacity:0.6}
 </style>
 </head>
 <body>
@@ -189,80 +215,173 @@ body{font-family:Arial;margin:12px;background:#f4f6f8;color:#111}
 </div>
 
 <script>
+let metaCache = {}; // Cache für Meta-Daten
+let pendingRequests = new Set(); // Verhindert doppelte Requests
+
 async function fetchMeta(device){
+  if(metaCache[device]) return metaCache[device]; // Aus Cache
+  if(pendingRequests.has('meta-'+device)) return null; // Request läuft bereits
+  
+  pendingRequests.add('meta-'+device);
   try{
-    let r = await fetch('/api/device_meta/'+device); if(!r.ok) throw r;
-    let j = await r.json(); if(j.error) throw j.error;
-    return j.body || j; // host_forward returns {"code":..,"body":parsed}
-  }catch(e){ console.error('meta err',device,e); return null; }
+    let r = await fetch('/api/device_meta/'+device); 
+    if(!r.ok) throw r;
+    let j = await r.json(); 
+    if(j.error) throw j.error;
+    let body = j.body || j;
+    metaCache[device] = body; // Cachen
+    return body;
+  }catch(e){ 
+    console.error('meta err',device,e); 
+    return null; 
+  } finally {
+    pendingRequests.delete('meta-'+device);
+  }
 }
+
 async function fetchState(device){
+  if(pendingRequests.has('state-'+device)) return null; // Request läuft bereits
+  
+  pendingRequests.add('state-'+device);
   try{
-    let r = await fetch('/api/device_state/'+device); if(!r.ok) throw r;
-    let j = await r.json(); if(j.error) throw j.error;
+    let r = await fetch('/api/device_state/'+device);
+    if(!r.ok) throw r;
+    let j = await r.json(); 
+    if(j.error) throw j.error;
     return j.body || j;
-  }catch(e){ console.error('state err',device,e); return null; }
+  }catch(e){ 
+    console.error('state err',device,e); 
+    return null; 
+  } finally {
+    pendingRequests.delete('state-'+device);
+  }
 }
+
 function mkRelayRow(global_idx, name, state){
   const row = document.createElement('div'); row.className='relay-row';
   const label = document.createElement('div'); label.className='label';
   label.innerHTML = '<strong>'+name+'</strong><div class="small">#'+global_idx+'</div>';
   const sw = document.createElement('label'); sw.className='switch';
-  const input = document.createElement('input'); input.type='checkbox'; input.id = 'g'+global_idx;
+  const input = document.createElement('input'); 
+  input.type='checkbox'; 
+  input.id = 'g'+global_idx;
   input.checked = (state==1);
-  input.onchange = ()=> toggleRelay(global_idx, input.checked?1:0);
+  input.onchange = ()=> toggleRelay(global_idx, input.checked?1:0, input);
   const span = document.createElement('span'); span.className='slider';
   sw.appendChild(input); sw.appendChild(span);
   row.appendChild(label); row.appendChild(sw);
   return row;
 }
+
 async function buildRelays(){
   // esp1
-  const meta1 = await fetchMeta('esp1'); const state1 = await fetchState('esp1');
-  const container1 = document.getElementById('esp1_relays'); container1.innerHTML='';
-  if(meta1 && meta1.names){
+  const meta1 = await fetchMeta('esp1'); 
+  const state1 = await fetchState('esp1');
+  const container1 = document.getElementById('esp1_relays'); 
+  container1.innerHTML='';
+  if(meta1 && meta1.names && state1){
     for(let i=0;i<meta1.count;i++){
       const name = meta1.names[i] || ('Relay '+(i+1));
-      const st = (state1 && state1['r'+i]!==undefined)? state1['r'+i] : 0;
+      const st = (state1['r'+i]!==undefined)? state1['r'+i] : 0;
       container1.appendChild(mkRelayRow(i+1, name, st));
     }
-  } else { container1.textContent = 'keine daten'; }
+  } else { 
+    container1.innerHTML = '<div class="error">keine daten</div>'; 
+  }
 
   // esp2
-  const meta2 = await fetchMeta('esp2'); const state2 = await fetchState('esp2');
-  const container2 = document.getElementById('esp2_relays'); container2.innerHTML='';
-  if(meta2 && meta2.names){
+  const meta2 = await fetchMeta('esp2'); 
+  const state2 = await fetchState('esp2');
+  const container2 = document.getElementById('esp2_relays'); 
+  container2.innerHTML='';
+  if(meta2 && meta2.names && state2){
     for(let i=0;i<meta2.count;i++){
       const name = meta2.names[i] || ('Relay '+(i+1));
-      const global_idx = 9 + i; // mapping 9..12
-      const st = (state2 && state2['r'+i]!==undefined)? state2['r'+i] : 0;
+      const global_idx = 9 + i;
+      const st = (state2['r'+i]!==undefined)? state2['r'+i] : 0;
       container2.appendChild(mkRelayRow(global_idx, name, st));
     }
-  } else { container2.textContent = 'keine daten'; }
+  } else { 
+    container2.innerHTML = '<div class="error">keine daten</div>'; 
+  }
 }
 
-async function toggleRelay(global_idx, val){
+async function toggleRelay(global_idx, val, inputElement){
+  // Sofort visuelles Feedback
+  inputElement.disabled = true;
+  
   try{
-    await fetch('/api/relay/set', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({global_idx, val})});
-    // visual state already updated by checkbox; optional: refresh state after small delay
-    setTimeout(()=>buildRelays(),200);
-  }catch(e){ alert('Fehler: '+e); }
+    let r = await fetch('/api/relay/set', {
+      method:'POST', 
+      headers:{'Content-Type':'application/json'}, 
+      body: JSON.stringify({global_idx, val})
+    });
+    if(!r.ok) throw new Error('Request failed');
+    
+    // Nach 100ms State neu laden (gibt Zeit für ESP zu reagieren)
+    setTimeout(async ()=>{
+      inputElement.disabled = false;
+      // Nur den betroffenen Device neu laden
+      const device = global_idx <= 8 ? 'esp1' : 'esp2';
+      await refreshDeviceState(device);
+    }, 100);
+  }catch(e){ 
+    alert('Fehler beim Schalten: '+e); 
+    inputElement.checked = !inputElement.checked; // Zurücksetzen
+    inputElement.disabled = false;
+  }
 }
 
-// ESP3, RS232 helpers (unchanged)
+// Nur einen Device-State neu laden
+async function refreshDeviceState(device){
+  const state = await fetchState(device);
+  if(!state) return;
+  
+  const meta = metaCache[device];
+  if(!meta) return;
+  
+  // Update nur die Checkboxen
+  const startIdx = device === 'esp1' ? 1 : 9;
+  for(let i=0; i<meta.count; i++){
+    const globalIdx = startIdx + i;
+    const checkbox = document.getElementById('g'+globalIdx);
+    if(checkbox){
+      const newState = state['r'+i] === 1;
+      if(checkbox.checked !== newState) checkbox.checked = newState;
+    }
+  }
+}
+
+// ESP3, RS232 helpers
 async function refreshEsp3(){
   try{
-    let r = await fetch('/api/esp3/state'); if(!r.ok) throw r;
+    let r = await fetch('/api/esp3/state'); 
+    if(!r.ok) throw r;
     let j = await r.json();
     let body = j.body || j;
     document.getElementById('windState').textContent = body.running? 'AN':'AUS';
     document.getElementById('pwmVal').textContent = body.pwm;
     document.getElementById('pwmSlider').value = body.pwm;
-  }catch(e){}
+  }catch(e){
+    console.error('esp3 err',e);
+  }
 }
-async function setWind(val){ await fetch('/api/esp3/set_wind',{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({val})}); }
-async function setPwm(v){ document.getElementById('pwmVal').textContent = v; await fetch('/api/esp3/set_pwm',{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({pwm:parseInt(v)})}); }
-async function stopTrain(){ await fetch('/api/esp3/set_pwm',{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({pwm:0})}); document.getElementById('pwmVal').textContent='0'; document.getElementById('pwmSlider').value=0; }
+
+async function setWind(val){ 
+  await fetch('/api/esp3/set_wind',{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({val})}); 
+  setTimeout(refreshEsp3, 100);
+}
+
+async function setPwm(v){ 
+  document.getElementById('pwmVal').textContent = v; 
+  await fetch('/api/esp3/set_pwm',{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({pwm:parseInt(v)})}); 
+}
+
+async function stopTrain(){ 
+  await fetch('/api/esp3/set_pwm',{method:'POST',headers:{'Content-Type':'application/json'},body: JSON.stringify({pwm:0})}); 
+  document.getElementById('pwmVal').textContent='0'; 
+  document.getElementById('pwmSlider').value=0; 
+}
 
 // RS232
 async function sendRs(){
@@ -279,21 +398,34 @@ async function sendRs(){
   }catch(e){ document.getElementById('rs_reply').textContent = 'Fehler: '+e; }
 }
 
-async function refreshAll(){
-  await Promise.all([buildRelays(), refreshEsp3(), refreshTemps()]);
-}
-
 async function refreshTemps(){
   try{
-    let r = await fetch('/api/device_state/esp1'); if(!r.ok) return;
-    let j = await r.json(); let body = j.body || j;
+    let r = await fetch('/api/device_state/esp1'); 
+    if(!r.ok) return;
+    let j = await r.json(); 
+    let body = j.body || j;
     if(body.temp !== undefined) document.getElementById('temp').textContent = (body.temp===null?'--':Number(body.temp).toFixed(2));
     if(body.rntc !== undefined) document.getElementById('rntc').textContent = (body.rntc===null?'--':Number(body.rntc).toFixed(0));
-  }catch(e){}
+  }catch(e){
+    console.error('temp err',e);
+  }
 }
 
-setInterval(refreshAll,1500);
-refreshAll();
+// Optimiertes Polling: nur States, nicht Meta
+async function refreshAll(){
+  await Promise.all([
+    refreshDeviceState('esp1'),
+    refreshDeviceState('esp2'),
+    refreshEsp3(),
+    refreshTemps()
+  ]);
+}
+
+// Initial: Meta laden und Relays bauen
+buildRelays();
+
+// Danach nur noch States updaten (alle 3 Sekunden statt 1.5)
+setInterval(refreshAll, 3000);
 </script>
 </body>
 </html>
