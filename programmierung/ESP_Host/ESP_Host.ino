@@ -97,41 +97,92 @@ void handleClients(){
   server.send(200,"application/json", json); 
 }
 
+// Ersetze vorhandene handleForward() mit diesem robusten Parser
 void handleForward(){
   Serial.printf("[HTTP] POST /forward von %s\n", server.client().remoteIP().toString().c_str());
-  
-  if(server.method() != HTTP_POST){ 
+
+  if(server.method() != HTTP_POST){
     Serial.println("[FEHLER] Falsche Methode für /forward");
-    server.send(405,"text/plain","method"); 
-    return; 
+    server.send(405,"text/plain","method");
+    return;
   }
-  
+
   String b = server.arg("plain");
   Serial.printf("[DATA] Forward Body: %s\n", b.c_str());
-  
-  auto extract = [&](const char* key)->String{
-    int idx = b.indexOf(String("\"")+String(key)+String("\""));
-    if(idx<0) return "";
+
+  // Hilfsfunktion: extrahiere String/Objekt/Token nach key
+  auto extractValue = [&](const char* key)->String{
+    int idx = b.indexOf(String("\"") + String(key) + String("\""));
+    if(idx < 0) return "";
     int colon = b.indexOf(":", idx);
-    if(colon<0) return "";
-    int q1 = b.indexOf("\"", colon);
-    if(q1<0) return "";
-    int q2 = b.indexOf("\"", q1+1);
-    if(q2<0) return "";
-    return b.substring(q1+1,q2);
+    if(colon < 0) return "";
+
+    // skip spaces
+    int p = colon + 1;
+    while(p < (int)b.length() && isspace(b[p])) p++;
+
+    if(p >= (int)b.length()) return "";
+
+    char c = b[p];
+    if(c == '"'){
+      // quoted string, handle escapes
+      int i = p + 1;
+      String out = "";
+      while(i < (int)b.length()){
+        char ch = b[i++];
+        if(ch == '\\' && i < (int)b.length()){
+          char next = b[i++];
+          if(next == 'n') out += '\n';
+          else if(next == 'r') out += '\r';
+          else if(next == 't') out += '\t';
+          else out += next;
+        } else if(ch == '"'){
+          return out;
+        } else {
+          out += ch;
+        }
+      }
+      return out; // unterbrochen, aber gib was wir haben
+    } else if(c == '{' || c == '['){
+      // balanced JSON object/array
+      char open = c;
+      char close = (c == '{') ? '}' : ']';
+      int depth = 0;
+      int i = p;
+      for(; i < (int)b.length(); ++i){
+        if(b[i] == open) depth++;
+        else if(b[i] == close){
+          depth--;
+          if(depth == 0){
+            // substring from p .. i inclusive
+            return b.substring(p, i+1);
+          }
+        } else if(b[i] == '"' ){ // skip strings inside to avoid braces in strings
+          i++;
+          while(i < (int)b.length()){
+            if(b[i] == '\\' && i+1 < (int)b.length()) i += 2;
+            else if(b[i] == '"') { i++; break; }
+            else i++;
+          }
+          i--; // adjust for loop increment
+        }
+      }
+      // if we get here, return rest
+      return b.substring(p);
+    } else {
+      // unquoted token until comma or end/}
+      int i = p;
+      while(i < (int)b.length() && b[i] != ',' && b[i] != '}' && b[i] != ']') i++;
+      String tok = b.substring(p, i);
+      tok.trim();
+      return tok;
+    }
   };
-  
-  String target = extract("target");
-  String method = extract("method");
-  String path = extract("path");
-  String body="";
-  int bi = b.indexOf("\"body\"");
-  if(bi>=0){
-    int colon = b.indexOf(":",bi);
-    int start = b.indexOf("\"",colon);
-    int end = b.lastIndexOf("\"");
-    if(start>=0 && end>start) body = b.substring(start+1,end);
-  }
+
+  String target = extractValue("target");
+  String method = extractValue("method");
+  String path = extractValue("path");
+  String body = extractValue("body");
 
   if(target.length()==0 || method.length()==0 || path.length()==0){
     Serial.println("[FEHLER] Fehlende Parameter in /forward");
@@ -143,40 +194,41 @@ void handleForward(){
   for(int i=0;i<MAX_CLIENTS;i++){
     if(clients[i].name==target){ targetIp = clients[i].ip; break; }
   }
-  
-  if(targetIp.length()==0){ 
+
+  if(targetIp.length()==0){
     Serial.printf("[FEHLER] Target '%s' nicht registriert\n", target.c_str());
-    server.send(404,"text/plain","target not registered"); 
-    return; 
+    server.send(404,"text/plain","target not registered");
+    return;
   }
 
   String url = "http://"+targetIp+path;
   Serial.printf("[FORWARD] %s zu %s (%s)\n", method.c_str(), target.c_str(), url.c_str());
-  
+
   HTTPClient http;
   http.begin(url);
   int code = 0;
   String resp="";
-  
-  if(method=="GET"){
+
+  // wenn body ein JSON-Objekt/Array beginnt, setze Content-Type auf application/json
+  bool bodyIsJson = body.length()>0 && (body.charAt(0) == '{' || body.charAt(0) == '[');
+
+  if(method == "GET"){
     code = http.GET();
-    if(code>0) resp = http.getString();
+    if(code > 0) resp = http.getString();
+  } else if(method == "POST"){
+    if(bodyIsJson) http.addHeader("Content-Type","application/json");
+    else http.addHeader("Content-Type","text/plain");
+    code = http.POST(body);
+    if(code > 0) resp = http.getString();
   } else {
-    http.addHeader("Content-Type","text/plain");
-    if(method=="POST"){ 
-      code = http.POST(body); 
-      if(code>0) resp = http.getString(); 
-    }
-    else { 
-      Serial.printf("[FEHLER] Nicht unterstützte Methode: %s\n", method.c_str());
-      server.send(400,"text/plain","unsupported method"); 
-      http.end(); 
-      return; 
-    }
+    Serial.printf("[FEHLER] Nicht unterstützte Methode: %s\n", method.c_str());
+    server.send(400,"text/plain","unsupported method");
+    http.end();
+    return;
   }
-  
+
   Serial.printf("[RESPONSE] Code: %d, Body: %s\n", code, resp.c_str());
-  
+
   String out = "{\"code\":"+String(code)+",\"body\":\"";
   for(size_t i=0;i<resp.length();++i){
     char c = resp[i];
@@ -190,6 +242,7 @@ void handleForward(){
   http.end();
   server.send(200,"application/json",out);
 }
+
 
 // WiFi Event Handler für AP-Verbindungen
 void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info){
