@@ -203,9 +203,22 @@ body{font-family:Arial;margin:12px;background:#f4f6f8;color:#111}
 </div>
 
 <div class="card">
-  <div class="section-title">ESP1 — Temperatur & RS232</div>
-  <div>Temp: <span id="temp">--</span> °C</div>
-  <div>R_ntc: <span id="rntc">--</span> Ω</div>
+  <div class="grid">
+    <div>
+      <div class="section-title">ESP1 — Temperatur</div>
+      <div>Temp: <span id="temp1">--</span> °C</div>
+      <div>R_ntc: <span id="rntc1">--</span> Ω</div>
+    </div>
+    <div>
+      <div class="section-title">ESP2 — Temperatur</div>
+      <div>Temp: <span id="temp2">--</span> °C</div>
+      <div>R_ntc: <span id="rntc2">--</span> Ω</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">ESP1 — RS232</div>
   <div style="margin-top:8px">
     <input id="rs_cmd" style="width:60%" placeholder=":06030401210120">
     <input id="rs_timeout" type="number" value="500" style="width:80px">
@@ -399,15 +412,28 @@ async function sendRs(){
 }
 
 async function refreshTemps(){
+  // ESP1 Temperatur
   try{
     let r = await fetch('/api/device_state/esp1'); 
     if(!r.ok) return;
     let j = await r.json(); 
     let body = j.body || j;
-    if(body.temp !== undefined) document.getElementById('temp').textContent = (body.temp===null?'--':Number(body.temp).toFixed(2));
-    if(body.rntc !== undefined) document.getElementById('rntc').textContent = (body.rntc===null?'--':Number(body.rntc).toFixed(0));
+    if(body.temp !== undefined) document.getElementById('temp1').textContent = (body.temp===null?'--':Number(body.temp).toFixed(2));
+    if(body.rntc !== undefined) document.getElementById('rntc1').textContent = (body.rntc===null?'--':Number(body.rntc).toFixed(0));
   }catch(e){
-    console.error('temp err',e);
+    console.error('esp1 temp err',e);
+  }
+  
+  // ESP2 Temperatur
+  try{
+    let r = await fetch('/api/device_state/esp2'); 
+    if(!r.ok) return;
+    let j = await r.json(); 
+    let body = j.body || j;
+    if(body.temp !== undefined) document.getElementById('temp2').textContent = (body.temp===null?'--':Number(body.temp).toFixed(2));
+    if(body.rntc !== undefined) document.getElementById('rntc2').textContent = (body.rntc===null?'--':Number(body.rntc).toFixed(0));
+  }catch(e){
+    console.error('esp2 temp err',e);
   }
 }
 

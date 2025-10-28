@@ -47,7 +47,18 @@ String getRelayStateJSON(){
   return s;
 }
 
-void handleState(){ server.send(200,"application/json",getRelayStateJSON()); }
+void handleState(){ 
+  String s="{";
+  for(uint8_t i=0;i<RELAY_COUNT;i++){
+    s += "\"r"+String(i)+"\":"+String(physToLogical(digitalRead(RELAYS[i].pin)));
+    s += ",";
+  }
+  // Füge Temperaturdaten hinzu
+  s += "\"temp\":" + (isnan(cachedTempC)?"null":String(cachedTempC,2)) + ",";
+  s += "\"rntc\":" + (isnan(cachedRntc)?"null":String(cachedRntc,0));
+  s += "}";
+  server.send(200,"application/json",s); 
+}
 
 void handleSet(){
   if(!server.hasArg("idx")||!server.hasArg("val")){ server.send(400,"text/plain","missing args"); return; }
@@ -107,7 +118,13 @@ void handleSend(){
     return; 
   }
   
-  // WICHTIG: Stelle sicher dass cmd mit \r\n endet (ProPar Protokoll!)
+  // WICHTIG: Konvertiere Escape-Sequenzen in echte Steuerzeichen
+  // Ersetze \r und \n (als Text) durch echte Carriage Return und Line Feed
+  cmd.replace("\\r", "\r");
+  cmd.replace("\\n", "\n");
+  cmd.replace("\\t", "\t");
+  
+  // Stelle sicher dass cmd mit \r\n endet (ProPar Protokoll!)
   if(!cmd.endsWith("\r\n")) {
     // Prüfe ob nur \r oder nur \n am Ende
     if(cmd.endsWith("\r") || cmd.endsWith("\n")){
@@ -205,14 +222,52 @@ void startServer(){
 
 void setup(){
   Serial.begin(115200);
-  for(uint8_t i=0;i<RELAY_COUNT;i++){ pinMode(RELAYS[i].pin, OUTPUT); digitalWrite(RELAYS[i].pin, logicalToPhys(0)); }
-  analogReadResolution(12); analogSetAttenuation(ADC_11db);
+  delay(500);
+  Serial.println("\n\nESP1 startet...");
+  
+  // Relais initialisieren
+  for(uint8_t i=0;i<RELAY_COUNT;i++){ 
+    pinMode(RELAYS[i].pin, OUTPUT); 
+    digitalWrite(RELAYS[i].pin, logicalToPhys(0)); 
+  }
+  
+  // ADC initialisieren
+  analogReadResolution(12); 
+  analogSetAttenuation(ADC_11db);
 
+  // WiFi initialisieren
   WiFi.onEvent(onWiFiEvent);
-  WiFi.mode(WIFI_STA); WiFi.begin(WIFI_SSID, WIFI_PASS);
+  WiFi.mode(WIFI_STA); 
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  
+  Serial.print("Verbinde mit WiFi");
+  unsigned long startTime = millis();
+  while(WiFi.status() != WL_CONNECTED && millis() - startTime < 10000){
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+  
+  if(WiFi.status() == WL_CONNECTED){
+    Serial.print("WiFi verbunden! IP: ");
+    Serial.println(WiFi.localIP());
+    
+    // Serial2 für RS232 initialisieren
+    if(!serial2Started){ 
+      MySerial.begin(38400, SERIAL_8N1, UART2_RX_PIN, UART2_TX_PIN); 
+      serial2Started = true;
+      Serial.println("Serial2 (RS232) initialisiert auf 38400 baud");
+    }
+    
+    registerAtHost();
+  } else {
+    Serial.println("WiFi Verbindung fehlgeschlagen!");
+  }
 
+  // HTTP Server starten
   startServer();
-  Serial.println("ESP1 API ready");
+  Serial.println("HTTP Server gestartet");
+  Serial.println("ESP1 bereit!\n");
 }
 
 void loop(){
