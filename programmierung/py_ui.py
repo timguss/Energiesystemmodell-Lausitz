@@ -120,24 +120,12 @@ def api_rs232():
     timeout = int(j.get("timeout",500))
     if not cmd:
         return jsonify({"error":"no cmd"}), 400
-    print(cmd)
-
-    # Falls der Client versehentlich literal backslashes gesendet hat, konvertiere:
-    # "\\r\\n" -> real "\r\n"
-    if "\\r\\n" in cmd:
-        cmd = cmd.replace("\\r\\n", "\r\n")
-
-    # Wenn echte CR+LF noch fehlt, hänge sie an
-    if not cmd.endswith("\r\n"):
-        cmd = cmd + "\r\n"
-
     inner = json.dumps({"cmd":cmd, "timeout":timeout})
     try:
         res = host_forward("esp1", "POST", "/send", inner, timeout=5)
         return jsonify(res)
     except Exception as e:
         return jsonify({"error": str(e)}), 502
-
 
 @app.route("/api/esp3/state")
 def api_esp3_state():
@@ -396,34 +384,19 @@ async function stopTrain(){
 }
 
 // RS232
-// Ersetze vorhandene sendRs() im <script>
 async function sendRs(){
-  // Rohtext aus Feld, ohne trim() — wir müssen genaue Endung prüfen
-  let raw = document.getElementById('rs_cmd').value;
+  let cmd = document.getElementById('rs_cmd').value.trim();
   let timeout = parseInt(document.getElementById('rs_timeout').value) || 500;
-  if(!raw){ alert('Bitte Befehl'); return; }
-
-  // Wenn Nutzer literal "\r\n" eingegeben hat, ersetze durch echten CR+LF
-  // (string contains backslash + r + backslash + n)
-  raw = raw.replace(/\\r\\n$/, '\r\n');
-
-  // Wenn jetzt noch kein echtes CR+LF am Ende, füge es an
-  if(!raw.endsWith('\r\n')) raw = raw + '\r\n';
-
+  if(!cmd){ alert('Bitte Befehl'); return; }
   document.getElementById('rs_reply').textContent = 'sende...';
   try{
-    let r = await fetch('/api/rs232', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({cmd: raw, timeout})
-    });
+    let r = await fetch('/api/rs232', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({cmd, timeout})});
     let j = await r.json();
     let body = j.body || j;
     if(typeof body === 'object') body = JSON.stringify(body, null, 2);
     document.getElementById('rs_reply').textContent = (body || JSON.stringify(j));
   }catch(e){ document.getElementById('rs_reply').textContent = 'Fehler: '+e; }
 }
-
 
 async function refreshTemps(){
   try{

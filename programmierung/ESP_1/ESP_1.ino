@@ -64,108 +64,108 @@ void handleTemp(){
 }
 
 void handleSend(){
-  if(!rs232Enabled){
-    server.send(400,"text/plain","RS232 deaktiviert");
-    return;
+  if(!rs232Enabled){ 
+    server.send(400,"text/plain","RS232 deaktiviert"); 
+    return; 
   }
-  if(!serial2Started){
-    server.send(500,"text/plain","Serial2 nicht initialisiert.");
-    return;
+  if(!serial2Started){ 
+    server.send(500,"text/plain","Serial2 nicht initialisiert."); 
+    return; 
   }
-  if(!server.hasArg("plain")){
-    server.send(400,"text/plain","Kein Body");
-    return;
+  if(!server.hasArg("plain")){ 
+    server.send(400,"text/plain","Kein Body"); 
+    return; 
   }
 
   String body = server.arg("plain");
   int idx1 = body.indexOf("\"cmd\"");
   int idx2 = body.indexOf("\"timeout\"");
-  String cmd = "";
+  
+  String cmd = ""; 
   unsigned long timeout = DEFAULT_REPLY_TIMEOUT;
-
-  // Parse cmd (erwartet echten CR+LF am Ende)
+  
+  // Parse cmd
   if(idx1>=0){
     int q1 = body.indexOf("\"", idx1+5);
     int q2 = body.indexOf("\"", q1+1);
     if(q1>=0 && q2>q1) cmd = body.substring(q1+1,q2);
   }
-
+  
   // Parse timeout
   if(idx2>=0){
     int colon = body.indexOf(":", idx2);
     int comma = body.indexOf("}", colon);
-    if(colon>=0 && comma>colon){
-      String tstr = body.substring(colon+1,comma);
-      tstr.trim();
-      timeout = tstr.toInt();
+    if(colon>=0 && comma>colon){ 
+      String tstr = body.substring(colon+1,comma); 
+      tstr.trim(); 
+      timeout = tstr.toInt(); 
     }
   }
-
-  if(cmd.length()==0){
-    server.send(400,"text/plain","Kein cmd gefunden");
-    return;
+  
+  if(cmd.length()==0){ 
+    server.send(400,"text/plain","Kein cmd gefunden"); 
+    return; 
   }
-
-  // Prüfen: cmd muss mit echtem CR+LF enden
-  if(!(cmd.endsWith("\r\n"))){
-    // Falls Nutzer literal backslash-r backslash-n gesendet hat, weise explizit drauf hin
-    if(cmd.endsWith("\\r\\n")){
-      server.send(400,"text/plain","cmd endet mit literal \"\\\\r\\\\n\"; erwarte echtes CR+LF (\\r\\n).");
-      return;
+  
+  // WICHTIG: Stelle sicher dass cmd mit \r\n endet (ProPar Protokoll!)
+  if(!cmd.endsWith("\r\n")) {
+    // Prüfe ob nur \r oder nur \n am Ende
+    if(cmd.endsWith("\r") || cmd.endsWith("\n")){
+      // Entferne einzelnes Zeichen und füge beides hinzu
+      cmd = cmd.substring(0, cmd.length()-1);
     }
-    server.send(400,"text/plain","cmd muss mit CR+LF enden (\\r\\n).");
-    return;
+    cmd += "\r\n";
   }
-
-  // Debug-Ausgabe (sichtbar in Serial)
+  
+  // Debug-Ausgabe
   Serial.print("RS232 TX: ");
-  for(size_t i=0;i<cmd.length();i++){
-    char c = cmd[i];
-    if(c == '\r') Serial.print("\\r");
-    else if(c == '\n') Serial.print("\\n");
-    else Serial.print(c);
+  for(size_t i=0; i<cmd.length(); i++){
+    if(cmd[i] == '\r') Serial.print("\\r");
+    else if(cmd[i] == '\n') Serial.print("\\n");
+    else Serial.print(cmd[i]);
   }
   Serial.println();
-
-  // Sende Befehl an Seriell
+  
+  // Sende Befehl an MFC
   MySerial.print(cmd);
-
-  // Warte auf Antwort bis Timeout
+  
+  // Warte auf Antwort
   String resp = "";
   unsigned long start = millis();
+  
   while(millis() - start < timeout){
     while(MySerial.available()){
       char c = MySerial.read();
       resp += c;
-      // vollständige Antwort bei CR+LF Ende
+      
+      // ProPar Antwort endet mit \r\n
       if(resp.endsWith("\r\n")){
-        // Debug RX
+        // Vollständige Antwort erhalten
         Serial.print("RS232 RX: ");
-        for(size_t i=0;i<resp.length();i++){
-          char d = resp[i];
-          if(d=='\r') Serial.print("\\r");
-          else if(d=='\n') Serial.print("\\n");
-          else Serial.print(d);
+        for(size_t i=0; i<resp.length(); i++){
+          if(resp[i] == '\r') Serial.print("\\r");
+          else if(resp[i] == '\n') Serial.print("\\n");
+          else Serial.print(resp[i]);
         }
         Serial.println();
-        server.send(200,"text/plain",resp);
+        
+        server.send(200, "text/plain", resp);
         return;
       }
     }
-    delay(10);
+    delay(10); // Kleine Pause um CPU zu entlasten
   }
-
-  // Timeout fallback
-  if(resp.length()>0){
+  
+  // Timeout
+  if(resp.length() > 0){
     Serial.print("RS232 RX (Timeout): ");
     Serial.println(resp);
-    server.send(200,"text/plain",resp);
+    server.send(200, "text/plain", resp);
   } else {
     Serial.println("RS232 RX: (keine Antwort)");
-    server.send(200,"text/plain","(keine Antwort)");
+    server.send(200, "text/plain", "(keine Antwort)");
   }
 }
-
 
 // --- New: meta endpoint to provide relay names/count
 void handleMeta(){
