@@ -1,0 +1,103 @@
+/* style.css — Styles for Central UI */
+
+body {
+  font-family: Arial, sans-serif;
+  margin: 12px;
+  background: #f4f6f8;
+  color: #111;
+}
+
+.card {
+  background: #fff;
+  padding: 12px;
+  border-radius: 8px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+  margin: 10px 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.section-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.relay-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.label {
+  flex: 1;
+}
+
+.switch {
+  position: relative;
+  width: 54px;
+  height: 30px;
+  display: inline-block;
+  margin-left: 12px;
+}
+
+.switch input {
+  display: none;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #ddd;
+  border-radius: 34px;
+  transition: 0.2s;
+}
+
+.slider:before {
+  content: '';
+  position: absolute;
+  height: 24px;
+  width: 24px;
+  left: 3px;
+  top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.switch input:checked + .slider {
+  background: #4caf50;
+}
+
+.switch input:checked + .slider:before {
+  transform: translateX(24px);
+}
+
+.switch input:disabled + .slider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.small {
+  font-size: 0.9em;
+  color: #666;
+}
+
+.error {
+  color: #d32f2f;
+  font-size: 0.85em;
+  margin-top: 4px;
+}
+
+.loading {
+  opacity: 0.6;
+}

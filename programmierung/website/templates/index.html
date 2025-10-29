@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Central UI</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="card">
+  <h2>Kontrolle & Anzeige</h2>
+  <div class="small">Host: {{host}}</div>
+</div>
+
+<div class="card">
+  <div class="section-title">ESP1 — Relais</div>
+  <div id="esp1_relays">lade...</div>
+</div>
+
+<div class="card">
+  <div class="section-title">ESP2 — Relais</div>
+  <div id="esp2_relays">lade...</div>
+</div>
+
+<div class="card">
+  <div class="section-title">ESP3 — Wind & Zug</div>
+  <div>Wind: <strong id="windState">—</strong></div>
+  <div style="margin-top:8px">
+    <button onclick="setWind(1)">AN</button>
+    <button onclick="setWind(0)">AUS</button>
+  </div>
+  <div style="margin-top:12px">
+    <label>Zug PWM: <span id="pwmVal">0</span></label>
+    <input id="pwmSlider" type="range" min="0" max="255" value="0" oninput="setPwm(this.value)">
+    <button onclick="stopTrain()">Stop</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="grid">
+    <div>
+      <div class="section-title">ESP1 — Temperatur</div>
+      <div>Temp: <span id="temp1">--</span> °C</div>
+      <div>R_ntc: <span id="rntc1">--</span> Ω</div>
+    </div>
+    <div>
+      <div class="section-title">ESP2 — Temperatur</div>
+      <div>Temp: <span id="temp2">--</span> °C</div>
+      <div>R_ntc: <span id="rntc2">--</span> Ω</div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">ESP1 — RS232</div>
+  <div style="margin-top:8px">
+    <input id="rs_cmd" style="width:60%" placeholder=":06030401210120">
+    <input id="rs_timeout" type="number" value="500" style="width:80px">
+    <button onclick="sendRs()">Senden</button>
+  </div>
+  <pre id="rs_reply">—</pre>
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
