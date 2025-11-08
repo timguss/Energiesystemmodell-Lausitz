@@ -1,5 +1,5 @@
 /*
- * ESP-Host mit Scenario-Support (ESP32 Version)
+ * ESP-Host mit Scenario-Support (ESP32 Version) - FIXED
  * 
  * Funktionen:
  * - WiFi Access Point
@@ -49,11 +49,19 @@ HTTPClient http;
 
 // Findet Client-IP anhand des Namens
 String getClientIP(String name) {
+  Serial.println("[getClientIP] Searching for: '" + name + "'");
+  
   for (int i = 0; i < MAX_CLIENTS; i++) {
-    if (clients[i].name == name) {
+    Serial.printf("[getClientIP] Checking slot %d: name='%s', ip='%s'\n", 
+                  i, clients[i].name.c_str(), clients[i].ip.c_str());
+    
+    if (clients[i].name.length() > 0 && clients[i].name.equals(name)) {
+      Serial.println("[getClientIP] Found! IP: " + clients[i].ip);
       return clients[i].ip;
     }
   }
+  
+  Serial.println("[getClientIP] NOT FOUND!");
   return "";
 }
 
@@ -61,7 +69,7 @@ String getClientIP(String name) {
 void registerClient(String name, String ip) {
   // Prüfe ob Client bereits existiert
   for (int i = 0; i < MAX_CLIENTS; i++) {
-    if (clients[i].name == name) {
+    if (clients[i].name.equals(name)) {
       clients[i].ip = ip;
       clients[i].lastSeen = millis();
       Serial.println("[Client] Updated: " + name + " @ " + ip);
@@ -88,6 +96,7 @@ void registerClient(String name, String ip) {
 String forwardRequest(String target, String method, String path, String body) {
   String ip = getClientIP(target);
   if (ip == "") {
+    Serial.println("[Forward] ERROR: Client '" + target + "' not found");
     return "{\"error\":\"Client not found\"}";
   }
   
@@ -115,12 +124,13 @@ String forwardRequest(String target, String method, String path, String body) {
   
   http.end();
   
-  // Return als JSON mit code und body
-  String response = "{\"code\":" + String(httpCode) + ",\"body\":\"";
-  // Escape quotes in payload
-  payload.replace("\"", "\\\"");
-  payload.replace("\n", "\\n");
-  response += payload + "\"}";
+  // FIXED: Gib das body-JSON direkt zurück ohne zu escapen
+  String response = "{\"code\":" + String(httpCode) + ",\"body\":";
+  response += payload;  // Payload ist bereits JSON
+  response += "}";
+  
+  Serial.println("[Forward] Response code: " + String(httpCode));
+  Serial.println("[Forward] Response body length: " + String(payload.length()));
   
   return response;
 }
@@ -147,40 +157,28 @@ void setRelayByForward(String device, int idx, int val) {
 
 void scenario_kohlekraftwerk(int state) {
   if (state == 0) {
-    // === KOHLEKRAFTWERK AUS ===
     Serial.println("[Scenario] Kohlekraftwerk AUS");
-    
-    setRelayByForward("esp1", 0, 0);  // Global Relay 1 aus
+    setRelayByForward("esp1", 0, 0);
     delay(50);
-    setRelayByForward("esp1", 1, 0);  // Global Relay 2 aus
+    setRelayByForward("esp1", 1, 0);
     delay(50);
-    setRelayByForward("esp1", 4, 0);  // Global Relay 5 aus
+    setRelayByForward("esp1", 4, 0);
     delay(50);
-    setRelayByForward("esp2", 0, 0);  // Global Relay 9 aus
-    
+    setRelayByForward("esp2", 0, 0);
     Serial.println("[Scenario] Kohlekraftwerk AUS - Fertig");
-    
   } else if (state == 1) {
-    // === KOHLEKRAFTWERK EIN ===
     Serial.println("[Scenario] Kohlekraftwerk EIN - Start");
-    
-    // Schritt 1: Mehrere Relays einschalten
-    setRelayByForward("esp1", 0, 1);  // Global Relay 1 ein
+    setRelayByForward("esp1", 0, 1);
     delay(50);
-    setRelayByForward("esp1", 1, 1);  // Global Relay 2 ein
+    setRelayByForward("esp1", 1, 1);
     delay(50);
-    setRelayByForward("esp1", 4, 1);  // Global Relay 5 ein
+    setRelayByForward("esp1", 4, 1);
     delay(50);
-    setRelayByForward("esp2", 0, 1);  // Global Relay 9 ein
-    
-    // Schritt 2: 5 Sekunden warten
+    setRelayByForward("esp2", 0, 1);
     Serial.println("[Scenario] Warte 5 Sekunden...");
     delayWithYield(5000);
-    
-    // Schritt 3: Relay 2 wieder ausschalten
     Serial.println("[Scenario] Relay 2 wird ausgeschaltet");
-    setRelayByForward("esp1", 1, 0);  // Global Relay 2 aus
-    
+    setRelayByForward("esp1", 1, 0);
     Serial.println("[Scenario] Kohlekraftwerk EIN - Fertig");
   }
 }
@@ -282,16 +280,67 @@ void handleRegister() {
   }
   
   String body = server.arg("plain");
-  // Erwarte: {"name":"esp1"}
+  Serial.println("[Register] Received: " + body);
   
-  int nameStart = body.indexOf("\"name\":\"") + 8;
+  // Parse JSON manuell: {"name":"esp1","ip":"..."}
+  int nameStart = body.indexOf("\"name\":\"");
+  if (nameStart < 0) {
+    server.send(400, "application/json", "{\"error\":\"No name field\"}");
+    return;
+  }
+  
+  nameStart += 8;  // Länge von "name":"
   int nameEnd = body.indexOf("\"", nameStart);
   String name = body.substring(nameStart, nameEnd);
   
+  // IP aus Request ermitteln
   String clientIP = server.client().remoteIP().toString();
+  
+  Serial.println("[Register] Name: '" + name + "', IP: " + clientIP);
+  
   registerClient(name, clientIP);
   
   server.send(200, "application/json", "{\"success\":true}");
+}
+
+// Hilfsfunktion: Extrahiert JSON-String-Wert
+String extractJsonString(String json, String key) {
+  String search = "\"" + key + "\":";
+  int pos = json.indexOf(search);
+  if (pos < 0) {
+    Serial.println("[JSON] Key '" + key + "' not found in: " + json);
+    return "";
+  }
+  
+  // Finde den Start des Wertes (nach dem ':')
+  int valueStart = pos + search.length();
+  
+  // Überspringe Leerzeichen
+  while (valueStart < json.length() && json.charAt(valueStart) == ' ') {
+    valueStart++;
+  }
+  
+  // Prüfe ob es ein String ist (beginnt mit ")
+  if (valueStart >= json.length() || json.charAt(valueStart) != '"') {
+    Serial.println("[JSON] Value for '" + key + "' is not a string");
+    return "";
+  }
+  
+  // Überspringe das öffnende "
+  valueStart++;
+  
+  // Finde das schließende " (beachte escaped quotes)
+  int valueEnd = valueStart;
+  while (valueEnd < json.length()) {
+    if (json.charAt(valueEnd) == '"' && (valueEnd == 0 || json.charAt(valueEnd - 1) != '\\')) {
+      break;
+    }
+    valueEnd++;
+  }
+  
+  String value = json.substring(valueStart, valueEnd);
+  Serial.println("[JSON] Extracted '" + key + "' = '" + value + "'");
+  return value;
 }
 
 // POST /forward - Request zu Client weiterleiten
@@ -302,39 +351,20 @@ void handleForward() {
   }
   
   String body = server.arg("plain");
+  Serial.println("[Forward] Request body: " + body);
+  Serial.println("[Forward] Body length: " + String(body.length()));
   
-  // Parse JSON manually (simple parser)
-  String target = "";
-  String method = "";
-  String path = "";
-  String reqBody = "";
+  // Parse JSON mit verbesserter Funktion
+  String target = extractJsonString(body, "target");
+  String method = extractJsonString(body, "method");
+  String path = extractJsonString(body, "path");
+  String reqBody = extractJsonString(body, "body");
   
-  int pos = body.indexOf("\"target\":\"");
-  if (pos >= 0) {
-    int start = pos + 10;
-    int end = body.indexOf("\"", start);
-    target = body.substring(start, end);
-  }
+  Serial.println("[Forward] Parsed - target: '" + target + "', method: '" + method + "', path: '" + path + "'");
   
-  pos = body.indexOf("\"method\":\"");
-  if (pos >= 0) {
-    int start = pos + 10;
-    int end = body.indexOf("\"", start);
-    method = body.substring(start, end);
-  }
-  
-  pos = body.indexOf("\"path\":\"");
-  if (pos >= 0) {
-    int start = pos + 8;
-    int end = body.indexOf("\"", start);
-    path = body.substring(start, end);
-  }
-  
-  pos = body.indexOf("\"body\":\"");
-  if (pos >= 0) {
-    int start = pos + 8;
-    int end = body.lastIndexOf("\"");
-    reqBody = body.substring(start, end);
+  if (target.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"No target specified\"}");
+    return;
   }
   
   String response = forwardRequest(target, method, path, reqBody);
@@ -454,5 +484,5 @@ void loop() {
     }
   }
   
-  delay(10); // Kleine Pause für Stabilität
+  delay(10);
 }

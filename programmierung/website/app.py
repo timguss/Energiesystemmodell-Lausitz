@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# app.py — Flask UI: Scenarios are executed on ESP Host
+# app.py — Flask UI: Scenarios are executed on ESP Host (DEBUG VERSION)
 
 from flask import Flask, jsonify, request, render_template
 import requests
@@ -21,8 +21,7 @@ GLOBAL_MAP = {
 }
 
 # ============================================================================
-# VERFÜGBARE SZENARIEN (nur UI-Beschreibungen)
-# Die eigentliche Logik liegt auf dem ESP-Host!
+# VERFÜGBARE SZENARIEN
 # ============================================================================
 
 SCENARIOS = {
@@ -58,15 +57,22 @@ def host_get(path, timeout=HTTP_TIMEOUT):
     """GET request to Host-ESP"""
     try:
         url = HOST + path
+        print(f"[DEBUG] GET {url}")
         r = requests.get(url, timeout=timeout)
+        print(f"[DEBUG] Response status: {r.status_code}")
         r.raise_for_status()
         try:
-            return r.json()
+            result = r.json()
+            print(f"[DEBUG] Response JSON: {result}")
+            return result
         except:
+            print(f"[DEBUG] Response TEXT: {r.text}")
             return r.text
     except requests.exceptions.Timeout:
+        print(f"[ERROR] Timeout beim Verbinden zu {HOST}")
         raise Exception("Timeout: Host antwortet nicht")
     except requests.exceptions.RequestException as e:
+        print(f"[ERROR] Request Exception: {str(e)}")
         raise Exception(f"Verbindungsfehler: {str(e)}")
 
 def host_post(path, data=None, timeout=HTTP_TIMEOUT):
@@ -74,33 +80,67 @@ def host_post(path, data=None, timeout=HTTP_TIMEOUT):
     try:
         url = HOST + path
         headers = {"Content-Type": "application/json"}
+        print(f"[DEBUG] POST {url}")
+        print(f"[DEBUG] Data: {data}")
         r = requests.post(url, data=data, headers=headers, timeout=timeout)
+        print(f"[DEBUG] Response status: {r.status_code}")
         r.raise_for_status()
         try:
-            return r.json()
+            result = r.json()
+            print(f"[DEBUG] Response JSON: {result}")
+            return result
         except:
+            print(f"[DEBUG] Response TEXT: {r.text}")
             return r.text
     except requests.exceptions.Timeout:
+        print(f"[ERROR] Timeout beim Verbinden zu {HOST}")
         raise Exception("Timeout: Host antwortet nicht")
     except requests.exceptions.RequestException as e:
+        print(f"[ERROR] Request Exception: {str(e)}")
         raise Exception(f"Verbindungsfehler: {str(e)}")
 
 def host_forward(target, method, path, body_str="", timeout=HTTP_TIMEOUT):
     """Forward request through Host-ESP to target device"""
+    print(f"[DEBUG] Forward to {target}: {method} {path}")
     payload = {"target": target, "method": method, "path": path, "body": body_str}
-    resp = host_post("/forward", json.dumps(payload), timeout=timeout)
     
-    # resp expected {"code":int, "body":"..."} where body may be a JSON string
-    if isinstance(resp, dict):
-        code = resp.get("code", -1)
-        body = resp.get("body", "")
-        # try to parse body into JSON if possible
-        try:
-            parsed = json.loads(body)
-            return {"code": code, "body": parsed}
-        except:
-            return {"code": code, "body": body}
-    return {"code": -1, "body": str(resp)}
+    try:
+        resp = host_post("/forward", json.dumps(payload), timeout=timeout)
+        print(f"[DEBUG] Forward response RAW: {repr(resp)}")
+        print(f"[DEBUG] Forward response type: {type(resp)}")
+        
+        # resp expected {"code":int, "body":"..."} where body may be a JSON string
+        if isinstance(resp, dict):
+            code = resp.get("code", -1)
+            body = resp.get("body", "")
+            print(f"[DEBUG] Extracted - code: {code}, body type: {type(body)}")
+            print(f"[DEBUG] Body content: {repr(body)}")
+            
+            # Wenn body ein String ist, versuche ihn als JSON zu parsen
+            if isinstance(body, str):
+                if body.strip():  # Nur parsen wenn nicht leer
+                    try:
+                        parsed = json.loads(body)
+                        print(f"[DEBUG] Body parsed as JSON: {parsed}")
+                        return {"code": code, "body": parsed}
+                    except json.JSONDecodeError as e:
+                        print(f"[DEBUG] Body is not valid JSON ({e}), returning as string")
+                        return {"code": code, "body": body}
+                else:
+                    print(f"[DEBUG] Body is empty string")
+                    return {"code": code, "body": ""}
+            else:
+                # Body ist bereits ein Objekt
+                print(f"[DEBUG] Body is already an object")
+                return {"code": code, "body": body}
+        
+        print(f"[WARNING] Response is not dict: {resp}")
+        return {"code": -1, "body": str(resp)}
+    except Exception as e:
+        print(f"[ERROR] Forward exception: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {"code": -1, "body": f"Error: {str(e)}"}
 
 # ============================================================================
 # FLASK APP
@@ -120,6 +160,29 @@ meta_cache = {}
 meta_cache_time = {}
 
 # ============================================================================
+# DEBUG ROUTE
+# ============================================================================
+
+@app.route("/api/debug/host")
+def api_debug_host():
+    """Prüft ob Host erreichbar ist und welche Clients registriert sind"""
+    result = {
+        "host": HOST,
+        "host_reachable": False,
+        "clients": None,
+        "error": None
+    }
+    
+    try:
+        clients = host_get("/clients", timeout=2)
+        result["host_reachable"] = True
+        result["clients"] = clients
+    except Exception as e:
+        result["error"] = str(e)
+    
+    return jsonify(result)
+
+# ============================================================================
 # API ROUTES
 # ============================================================================
 
@@ -128,30 +191,43 @@ def api_clients():
     try:
         return jsonify(host_get("/clients", timeout=2))
     except Exception as e:
+        print(f"[ERROR] /api/clients: {str(e)}")
         return jsonify({"error": str(e)}), 502
 
 @app.route("/api/device_meta/<device>")
 def api_device_meta(device):
+    print(f"\n[INFO] === Request: /api/device_meta/{device} ===")
     try:
         # Cache für 60 Sekunden
         now = time.time()
         if device in meta_cache and (now - meta_cache_time.get(device, 0)) < 60:
+            print(f"[INFO] Returning cached meta for {device}")
             return jsonify(meta_cache[device])
         
+        print(f"[INFO] Fetching fresh meta for {device}")
         res = host_forward(device, "GET", "/meta", timeout=2)
+        
         if res.get("code") == 200:
+            print(f"[SUCCESS] Got meta for {device}: {res}")
             meta_cache[device] = res
             meta_cache_time[device] = now
+        else:
+            print(f"[WARNING] Non-200 response for {device}: {res}")
+        
         return jsonify(res)
     except Exception as e:
+        print(f"[ERROR] /api/device_meta/{device}: {str(e)}")
         return jsonify({"error": str(e)}), 502
 
 @app.route("/api/device_state/<device>")
 def api_device_state(device):
+    print(f"[INFO] Request: /api/device_state/{device}")
     try:
         res = host_forward(device, "GET", "/state", timeout=2)
+        print(f"[INFO] State response for {device}: {res}")
         return jsonify(res)
     except Exception as e:
+        print(f"[ERROR] /api/device_state/{device}: {str(e)}")
         return jsonify({"error": str(e)}), 502
 
 @app.route("/api/relay/set", methods=["POST"])
@@ -163,13 +239,15 @@ def api_relay_set():
         return jsonify({"error": "invalid index"}), 400
     device, idx = GLOBAL_MAP[gi]
     path = f"/set?idx={idx}&val={val}"
+    print(f"[INFO] Relay set: global={gi}, device={device}, idx={idx}, val={val}")
     try:
         return jsonify(host_forward(device, "GET", path, timeout=2))
     except Exception as e:
+        print(f"[ERROR] /api/relay/set: {str(e)}")
         return jsonify({"error": str(e)}), 502
 
 # ============================================================================
-# SZENARIEN API - Leitet an ESP-Host weiter
+# SZENARIEN API
 # ============================================================================
 
 @app.route("/api/scenarios")
@@ -179,26 +257,22 @@ def api_scenarios():
 
 @app.route("/api/scenario/execute", methods=["POST"])
 def api_scenario_execute():
-    """
-    Führt ein Szenario aus - wird an ESP-Host weitergeleitet
-    Erwartet: {"scenario": "kohlekraftwerk", "state": 0}
-    ESP-Host Endpoint: GET /scenario?name=kohlekraftwerk&state=0
-    """
+    """Führt ein Szenario aus - wird an ESP-Host weitergeleitet"""
     j = request.get_json(force=True)
     scenario_name = j.get("scenario")
     state = int(j.get("state", 0))
     
+    print(f"[INFO] Executing scenario: {scenario_name}, state: {state}")
+    
     if not scenario_name:
         return jsonify({"error": "Kein Szenario angegeben"}), 400
     
-    # Prüfe ob Szenario bekannt ist (optional)
     if scenario_name not in SCENARIOS:
         return jsonify({"error": f"Unbekanntes Szenario: {scenario_name}"}), 400
     
-    # Sende an ESP-Host
     try:
         path = f"/scenario?name={scenario_name}&state={state}"
-        result = host_get(path, timeout=10)  # Längeres Timeout für Szenarien
+        result = host_get(path, timeout=10)
         
         return jsonify({
             "success": True,
@@ -208,6 +282,7 @@ def api_scenario_execute():
         })
         
     except Exception as e:
+        print(f"[ERROR] Scenario execution failed: {str(e)}")
         return jsonify({
             "error": str(e),
             "scenario": scenario_name,
@@ -223,10 +298,12 @@ def api_rs232():
     if not cmd:
         return jsonify({"error": "no cmd"}), 400
     inner = json.dumps({"cmd": cmd, "timeout": timeout})
+    print(f"[INFO] RS232 command: {cmd}")
     try:
         res = host_forward("esp1", "POST", "/send", inner, timeout=5)
         return jsonify(res)
     except Exception as e:
+        print(f"[ERROR] /api/rs232: {str(e)}")
         return jsonify({"error": str(e)}), 502
 
 # ESP3 endpoints
@@ -235,6 +312,7 @@ def api_esp3_state():
     try:
         return jsonify(host_forward("esp3", "GET", "/state", timeout=2))
     except Exception as e:
+        print(f"[ERROR] /api/esp3/state: {str(e)}")
         return jsonify({"error": str(e)}), 502
 
 @app.route("/api/esp3/set_wind", methods=["POST"])
@@ -244,6 +322,7 @@ def api_esp3_set_wind():
     try:
         return jsonify(host_forward("esp3", "GET", f"/set?val={val}", timeout=2))
     except Exception as e:
+        print(f"[ERROR] /api/esp3/set_wind: {str(e)}")
         return jsonify({"error": str(e)}), 502
 
 @app.route("/api/esp3/set_pwm", methods=["POST"])
@@ -254,6 +333,7 @@ def api_esp3_set_pwm():
     try:
         return jsonify(host_forward("esp3", "GET", f"/train?pwm={pwm}", timeout=2))
     except Exception as e:
+        print(f"[ERROR] /api/esp3/set_pwm: {str(e)}")
         return jsonify({"error": str(e)}), 502
 
 # ============================================================================
@@ -269,7 +349,10 @@ def index():
 # ============================================================================
 
 if __name__ == "__main__":
-    print("Starte Flask UI. Host:", HOST)
-    print("Szenarien werden auf ESP-Host ausgeführt:")
-    print("  Endpoint: GET /scenario?name=<name>&state=<state>")
-    app.run(host="0.0.0.0", port=8000, debug=False)
+    print("=" * 60)
+    print("Flask UI gestartet (DEBUG MODE)")
+    print("=" * 60)
+    print(f"Host ESP: {HOST}")
+    print(f"Debug Endpoint: http://localhost:8000/api/debug/host")
+    print("=" * 60)
+    app.run(host="0.0.0.0", port=8000, debug=True)
