@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-# app.py — Flask UI: grouped sliders (esp1 / esp2) with relay names + Scenarios with delays
+# app.py — Flask UI: Scenarios are executed on ESP Host
 
 from flask import Flask, jsonify, request, render_template
 import requests
 import json
 import time
-import threading
 
 # ============================================================================
 # CONFIGURATION
@@ -22,75 +21,32 @@ GLOBAL_MAP = {
 }
 
 # ============================================================================
-# SZENARIEN: Definiere hier welche Relays geschaltet werden sollen
+# VERFÜGBARE SZENARIEN (nur UI-Beschreibungen)
+# Die eigentliche Logik liegt auf dem ESP-Host!
 # ============================================================================
 
-def scenario_kohlekraftwerk_ein():
-    """
-    Kohlekraftwerk einschalten
-    Format: Liste von Tupeln (global_relay_index, wert, delay_sekunden)
-    - wert: 1 = ein, 0 = aus
-    - delay_sekunden: Wartezeit NACH dieser Aktion (optional, default=0)
-    """
-    return [
-        (1, 1, 0),      # Relay 1 ein, sofort weiter
-        (2, 1, 0),      # Relay 2 ein, sofort weiter
-        (5, 1, 0),      # Relay 5 ein, sofort weiter
-        (9, 1, 5),      # Relay 9 ein, dann 5 Sekunden warten
-        (2, 0, 0),      # Relay 2 wieder aus (nach den 5 Sekunden)
-    ]
-
-def scenario_kohlekraftwerk_aus():
-    """
-    Kohlekraftwerk ausschalten
-    """
-    return [
-        (1, 0, 0),
-        (2, 0, 0),
-        (5, 0, 0),
-        (9, 0, 0),
-    ]
-
-def scenario_test_verzögerung():
-    """
-    Test-Szenario mit verschiedenen Delays
-    """
-    return [
-        (1, 1, 2),      # Relay 1 ein, 2 Sek warten
-        (2, 1, 3),      # Relay 2 ein, 3 Sek warten
-        (3, 1, 2),      # Relay 3 ein, 2 Sek warten
-        (1, 0, 0),      # Relay 1 aus
-        (2, 0, 0),      # Relay 2 aus
-        (3, 0, 0),      # Relay 3 aus
-    ]
-
-def scenario_alles_aus():
-    """
-    Alle Relays ausschalten
-    """
-    return [(i, 0, 0) for i in range(1, 13)]
-
-# Verfügbare Szenarien registrieren
 SCENARIOS = {
-    "kohlekraftwerk_ein": {
-        "name": "Kohlekraftwerk einschalten",
-        "func": scenario_kohlekraftwerk_ein,
-        "description": "Schaltet mehrere Relays ein, nach 5s wird Relay 2 wieder aus"
+    "kohlekraftwerk": {
+        "name": "Kohlekraftwerk",
+        "states": [
+            {"id": 0, "name": "Aus", "description": "Kohlekraftwerk ausschalten"},
+            {"id": 1, "name": "Ein", "description": "Kohlekraftwerk einschalten"},
+        ]
     },
-    "kohlekraftwerk_aus": {
-        "name": "Kohlekraftwerk ausschalten",
-        "func": scenario_kohlekraftwerk_aus,
-        "description": "Schaltet alle Kohlekraftwerk-Relays aus"
+    "test": {
+        "name": "Test-Sequenz",
+        "states": [
+            {"id": 0, "name": "Reset", "description": "Alles ausschalten"},
+            {"id": 1, "name": "Sequenz 1", "description": "Test-Sequenz starten"},
+            {"id": 2, "name": "Sequenz 2", "description": "Alternative Sequenz"},
+        ]
     },
-    "test_verzoegerung": {
-        "name": "Test Verzögerung",
-        "func": scenario_test_verzögerung,
-        "description": "Demo mit verschiedenen Delays"
-    },
-    "alles_aus": {
-        "name": "Alles ausschalten",
-        "func": scenario_alles_aus,
-        "description": "Schaltet alle 12 Relays aus"
+    "alles": {
+        "name": "Alle Relays",
+        "states": [
+            {"id": 0, "name": "Alle Aus", "description": "Alle Relays ausschalten"},
+            {"id": 1, "name": "Alle An", "description": "Alle Relays einschalten"},
+        ]
     }
 }
 
@@ -145,43 +101,6 @@ def host_forward(target, method, path, body_str="", timeout=HTTP_TIMEOUT):
         except:
             return {"code": code, "body": body}
     return {"code": -1, "body": str(resp)}
-
-def set_relay(global_idx, val):
-    """Schaltet ein einzelnes Relay"""
-    if global_idx not in GLOBAL_MAP:
-        raise Exception(f"Ungültiger Relay-Index: {global_idx}")
-    
-    device, idx = GLOBAL_MAP[global_idx]
-    path = f"/set?idx={idx}&val={val}"
-    return host_forward(device, "GET", path, timeout=2)
-
-def execute_scenario_thread(scenario_id, actions):
-    """Führt Szenario in separatem Thread aus (mit Delays)"""
-    print(f"[Scenario] Start: {scenario_id}")
-    
-    for action in actions:
-        # Action kann 2 oder 3 Elemente haben
-        if len(action) == 2:
-            global_idx, val = action
-            delay = 0
-        else:
-            global_idx, val, delay = action
-        
-        try:
-            print(f"[Scenario] Relay {global_idx} -> {val}")
-            set_relay(global_idx, val)
-            
-            # Delay nach der Aktion
-            if delay > 0:
-                print(f"[Scenario] Warte {delay} Sekunden...")
-                time.sleep(delay)
-            else:
-                time.sleep(0.05)  # Minimale Pause zwischen Schaltungen
-                
-        except Exception as e:
-            print(f"[Scenario] Error Relay {global_idx}: {e}")
-    
-    print(f"[Scenario] Fertig: {scenario_id}")
 
 # ============================================================================
 # FLASK APP
@@ -250,87 +169,50 @@ def api_relay_set():
         return jsonify({"error": str(e)}), 502
 
 # ============================================================================
-# SZENARIEN API
+# SZENARIEN API - Leitet an ESP-Host weiter
 # ============================================================================
 
 @app.route("/api/scenarios")
 def api_scenarios():
-    """Liste aller verfügbaren Szenarien"""
-    return jsonify({
-        "scenarios": [
-            {
-                "id": key, 
-                "name": val["name"],
-                "description": val.get("description", "")
-            } 
-            for key, val in SCENARIOS.items()
-        ]
-    })
+    """Liste aller verfügbaren Szenarien (aus lokaler Config)"""
+    return jsonify({"scenarios": SCENARIOS})
 
 @app.route("/api/scenario/execute", methods=["POST"])
 def api_scenario_execute():
-    """Führt ein Szenario aus (in separatem Thread bei Delays)"""
+    """
+    Führt ein Szenario aus - wird an ESP-Host weitergeleitet
+    Erwartet: {"scenario": "kohlekraftwerk", "state": 0}
+    ESP-Host Endpoint: GET /scenario?name=kohlekraftwerk&state=0
+    """
     j = request.get_json(force=True)
-    scenario_id = j.get("scenario_id")
+    scenario_name = j.get("scenario")
+    state = int(j.get("state", 0))
     
-    if scenario_id not in SCENARIOS:
-        return jsonify({"error": "Unbekanntes Szenario"}), 400
+    if not scenario_name:
+        return jsonify({"error": "Kein Szenario angegeben"}), 400
     
-    scenario = SCENARIOS[scenario_id]
-    actions = scenario["func"]()
+    # Prüfe ob Szenario bekannt ist (optional)
+    if scenario_name not in SCENARIOS:
+        return jsonify({"error": f"Unbekanntes Szenario: {scenario_name}"}), 400
     
-    # Prüfe ob Delays vorhanden sind
-    has_delays = any(len(a) >= 3 and a[2] > 0 for a in actions)
-    
-    if has_delays:
-        # Starte in separatem Thread
-        thread = threading.Thread(
-            target=execute_scenario_thread,
-            args=(scenario_id, actions),
-            daemon=True
-        )
-        thread.start()
+    # Sende an ESP-Host
+    try:
+        path = f"/scenario?name={scenario_name}&state={state}"
+        result = host_get(path, timeout=10)  # Längeres Timeout für Szenarien
         
         return jsonify({
-            "scenario": scenario["name"],
-            "status": "started",
-            "message": "Szenario läuft im Hintergrund",
-            "has_delays": True
+            "success": True,
+            "scenario": scenario_name,
+            "state": state,
+            "host_response": result
         })
-    else:
-        # Sofortige Ausführung ohne Thread
-        results = []
-        errors = []
         
-        for action in actions:
-            if len(action) == 2:
-                global_idx, val = action
-            else:
-                global_idx, val, _ = action
-            
-            try:
-                result = set_relay(global_idx, val)
-                results.append({
-                    "relay": global_idx,
-                    "value": val,
-                    "success": True
-                })
-                time.sleep(0.05)
-            except Exception as e:
-                errors.append({
-                    "relay": global_idx,
-                    "value": val,
-                    "error": str(e)
-                })
-        
+    except Exception as e:
         return jsonify({
-            "scenario": scenario["name"],
-            "status": "completed",
-            "results": results,
-            "errors": errors,
-            "success": len(errors) == 0,
-            "has_delays": False
-        })
+            "error": str(e),
+            "scenario": scenario_name,
+            "state": state
+        }), 502
 
 # RS232 endpoint
 @app.route("/api/rs232", methods=["POST"])
@@ -388,4 +270,6 @@ def index():
 
 if __name__ == "__main__":
     print("Starte Flask UI. Host:", HOST)
+    print("Szenarien werden auf ESP-Host ausgeführt:")
+    print("  Endpoint: GET /scenario?name=<name>&state=<state>")
     app.run(host="0.0.0.0", port=8000, debug=False)

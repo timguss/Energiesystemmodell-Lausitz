@@ -1,350 +1,521 @@
-// ESPHost.ino
-#include <WiFi.h>
-#include <WebServer.h>
-#include <HTTPClient.h>
+/*
+ * ESP-Host mit Scenario-Support
+ *
+ * Funktionen:
+ * - WiFi Access Point
+ * - Web Server mit /forward Endpoint
+ * - Client Management (esp1, esp2, esp3)
+ * - Scenario Execution (/scenario?name=X&state=Y)
+ *
+ * Hardware: ESP8266 (z.B. NodeMCU, Wemos D1 Mini)
+ */
 
-WebServer server(80);
+#include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266HTTPClient.h>
 
-struct ClientInfo { String name; String ip; unsigned long lastSeen; };
-#define MAX_CLIENTS 12
-ClientInfo clients[MAX_CLIENTS];
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
 
-const char* AP_SSID = "ESP-HOST";
-const char* AP_PASS = "espHostPass";
+// WiFi Access Point
+const char *AP_SSID = "ESP-Host";
+const char *AP_PASSWORD = "12345678";
 
-// Tracking für verbundene WiFi-Clients
+// Web Server
+ESP8266WebServer server(80);
+
+// Client ESP URLs (werden automatisch registriert)
+#define MAX_CLIENTS 10
+
+struct ClientDevice
+{
+  String name;
+  String ip;
+  unsigned long lastSeen;
+};
+
+ClientDevice clients[MAX_CLIENTS];
+int clientCount = 0;
+
+// Monitoring
 int lastStationCount = 0;
 
-void addOrUpdateClient(const String &name, const String &ip){
-  bool isNew = true;
-  for(int i=0;i<MAX_CLIENTS;i++){
-    if(clients[i].name == name){
-      clients[i].ip = ip; 
+// HTTP Client für Forward-Requests
+WiFiClient wifiClient;
+HTTPClient http;
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+// Findet Client-IP anhand des Namens
+String getClientIP(String name)
+{
+  for (int i = 0; i < clientCount; i++)
+  {
+    if (clients[i].name == name)
+    {
+      return clients[i].ip;
+    }
+  }
+  return "";
+}
+
+// Registriert oder aktualisiert einen Client
+void registerClient(String name, String ip)
+{
+  // Prüfe ob Client bereits existiert
+  for (int i = 0; i < MAX_CLIENTS; i++)
+  {
+    if (clients[i].name == name)
+    {
+      clients[i].ip = ip;
       clients[i].lastSeen = millis();
-      Serial.printf("[UPDATE] Client '%s' aktualisiert - IP: %s\n", name.c_str(), ip.c_str());
-      isNew = false;
+      Serial.println("[Client] Updated: " + name + " @ " + ip);
       return;
     }
   }
-  for(int i=0;i<MAX_CLIENTS;i++){
-    if(clients[i].name.length()==0){
-      clients[i].name = name; 
-      clients[i].ip = ip; 
+
+  // Neuer Client - finde freien Slot
+  for (int i = 0; i < MAX_CLIENTS; i++)
+  {
+    if (clients[i].name.length() == 0)
+    {
+      clients[i].name = name;
+      clients[i].ip = ip;
       clients[i].lastSeen = millis();
-      Serial.printf("[NEU] Client '%s' registriert - IP: %s\n", name.c_str(), ip.c_str());
+      clientCount++;
+      Serial.println("[Client] Registered: " + name + " @ " + ip);
       return;
     }
   }
-  Serial.println("[WARNUNG] Maximale Client-Anzahl erreicht!");
+
+  Serial.println("[Client] ERROR: Max clients reached!");
 }
 
-String listClientsJSON(){
-  String s = "[";
-  bool first=true;
-  for(int i=0;i<MAX_CLIENTS;i++){
-    if(clients[i].name.length()){
-      if(!first) s += ",";
-      s += "{\"name\":\""+clients[i].name+"\",\"ip\":\""+clients[i].ip+"\"}";
-      first=false;
-    }
-  }
-  s += "]";
-  return s;
-}
-
-void handleRegister(){
-  Serial.printf("[HTTP] POST /register von %s\n", server.client().remoteIP().toString().c_str());
-  
-  if(server.method() != HTTP_POST){ 
-    Serial.println("[FEHLER] Falsche Methode für /register");
-    server.send(405,"text/plain","method"); 
-    return; 
-  }
-  
-  String body = server.arg("plain");
-  Serial.printf("[DATA] Body: %s\n", body.c_str());
-  
-  int nidx = body.indexOf("\"name\"");
-  int iidx = body.indexOf("\"ip\"");
-  String name="", ip="";
-  
-  if(nidx>=0){
-    int q1 = body.indexOf('"', nidx+6);
-    int q2 = body.indexOf('"', q1+1);
-    if(q1>=0 && q2>q1) name = body.substring(q1+1,q2);
-  }
-  if(iidx>=0){
-    int q1 = body.indexOf('"', iidx+4);
-    int q2 = body.indexOf('"', q1+1);
-    if(q1>=0 && q2>q1) ip = body.substring(q1+1,q2);
-  }
-  
-  if(name.length()==0) { 
-    Serial.println("[FEHLER] Name fehlt in Registrierung");
-    server.send(400,"text/plain","missing name"); 
-    return; 
-  }
-  if(ip.length()==0) ip = server.client().remoteIP().toString();
-  
-  addOrUpdateClient(name, ip);
-  server.send(200,"application/json","{\"status\":\"ok\"}");
-}
-
-void handleClients(){ 
-  Serial.printf("[HTTP] GET /clients von %s\n", server.client().remoteIP().toString().c_str());
-  String json = listClientsJSON();
-  Serial.printf("[RESPONSE] Clients-Liste: %s\n", json.c_str());
-  server.send(200,"application/json", json); 
-}
-
-// Ersetze vorhandene handleForward() mit diesem robusten Parser
-void handleForward(){
-  Serial.printf("[HTTP] POST /forward von %s\n", server.client().remoteIP().toString().c_str());
-
-  if(server.method() != HTTP_POST){
-    Serial.println("[FEHLER] Falsche Methode für /forward");
-    server.send(405,"text/plain","method");
-    return;
+// Forward Request zu einem Client-ESP
+String forwardRequest(String target, String method, String path, String body)
+{
+  String ip = getClientIP(target);
+  if (ip == "")
+  {
+    return "{\"error\":\"Client not found\"}";
   }
 
-  String b = server.arg("plain");
-  Serial.printf("[DATA] Forward Body: %s\n", b.c_str());
+  String url = "http://" + ip + path;
+  Serial.println("[Forward] " + method + " " + url);
 
-  // Hilfsfunktion: extrahiere String/Objekt/Token nach key
-  auto extractValue = [&](const char* key)->String{
-    int idx = b.indexOf(String("\"") + String(key) + String("\""));
-    if(idx < 0) return "";
-    int colon = b.indexOf(":", idx);
-    if(colon < 0) return "";
+  http.begin(wifiClient, url);
+  http.setTimeout(5000);
 
-    // skip spaces
-    int p = colon + 1;
-    while(p < (int)b.length() && isspace(b[p])) p++;
+  int httpCode = -1;
+  String payload = "";
 
-    if(p >= (int)b.length()) return "";
-
-    char c = b[p];
-    if(c == '"'){
-      // quoted string, handle escapes
-      int i = p + 1;
-      String out = "";
-      while(i < (int)b.length()){
-        char ch = b[i++];
-        if(ch == '\\' && i < (int)b.length()){
-          char next = b[i++];
-          if(next == 'n') out += '\n';
-          else if(next == 'r') out += '\r';
-          else if(next == 't') out += '\t';
-          else out += next;
-        } else if(ch == '"'){
-          return out;
-        } else {
-          out += ch;
-        }
-      }
-      return out; // unterbrochen, aber gib was wir haben
-    } else if(c == '{' || c == '['){
-      // balanced JSON object/array
-      char open = c;
-      char close = (c == '{') ? '}' : ']';
-      int depth = 0;
-      int i = p;
-      for(; i < (int)b.length(); ++i){
-        if(b[i] == open) depth++;
-        else if(b[i] == close){
-          depth--;
-          if(depth == 0){
-            // substring from p .. i inclusive
-            return b.substring(p, i+1);
-          }
-        } else if(b[i] == '"' ){ // skip strings inside to avoid braces in strings
-          i++;
-          while(i < (int)b.length()){
-            if(b[i] == '\\' && i+1 < (int)b.length()) i += 2;
-            else if(b[i] == '"') { i++; break; }
-            else i++;
-          }
-          i--; // adjust for loop increment
-        }
-      }
-      // if we get here, return rest
-      return b.substring(p);
-    } else {
-      // unquoted token until comma or end/}
-      int i = p;
-      while(i < (int)b.length() && b[i] != ',' && b[i] != '}' && b[i] != ']') i++;
-      String tok = b.substring(p, i);
-      tok.trim();
-      return tok;
-    }
-  };
-
-  String target = extractValue("target");
-  String method = extractValue("method");
-  String path = extractValue("path");
-  String body = extractValue("body");
-
-  if(target.length()==0 || method.length()==0 || path.length()==0){
-    Serial.println("[FEHLER] Fehlende Parameter in /forward");
-    server.send(400,"text/plain","missing args");
-    return;
+  if (method == "GET")
+  {
+    httpCode = http.GET();
+  }
+  else if (method == "POST")
+  {
+    http.addHeader("Content-Type", "application/json");
+    httpCode = http.POST(body);
   }
 
-  String targetIp="";
-  for(int i=0;i<MAX_CLIENTS;i++){
-    if(clients[i].name==target){ targetIp = clients[i].ip; break; }
+  if (httpCode > 0)
+  {
+    payload = http.getString();
+  }
+  else
+  {
+    payload = "{\"error\":\"HTTP error " + String(httpCode) + "\"}";
   }
 
-  if(targetIp.length()==0){
-    Serial.printf("[FEHLER] Target '%s' nicht registriert\n", target.c_str());
-    server.send(404,"text/plain","target not registered");
-    return;
-  }
-
-  String url = "http://"+targetIp+path;
-  Serial.printf("[FORWARD] %s zu %s (%s)\n", method.c_str(), target.c_str(), url.c_str());
-
-  HTTPClient http;
-  http.begin(url);
-  int code = 0;
-  String resp="";
-
-  // wenn body ein JSON-Objekt/Array beginnt, setze Content-Type auf application/json
-  bool bodyIsJson = body.length()>0 && (body.charAt(0) == '{' || body.charAt(0) == '[');
-
-  if(method == "GET"){
-    code = http.GET();
-    if(code > 0) resp = http.getString();
-  } else if(method == "POST"){
-    if(bodyIsJson) http.addHeader("Content-Type","application/json");
-    else http.addHeader("Content-Type","text/plain");
-    code = http.POST(body);
-    if(code > 0) resp = http.getString();
-  } else {
-    Serial.printf("[FEHLER] Nicht unterstützte Methode: %s\n", method.c_str());
-    server.send(400,"text/plain","unsupported method");
-    http.end();
-    return;
-  }
-
-  Serial.printf("[RESPONSE] Code: %d, Body: %s\n", code, resp.c_str());
-
-  String out = "{\"code\":"+String(code)+",\"body\":\"";
-  for(size_t i=0;i<resp.length();++i){
-    char c = resp[i];
-    if(c=='\\') out += "\\\\";
-    else if(c=='"') out += "\\\"";
-    else if(c=='\n') out += "\\n";
-    else if(c=='\r') out += "\\r";
-    else out += c;
-  }
-  out += "\"}";
   http.end();
-  server.send(200,"application/json",out);
+
+  // Return als JSON mit code und body
+  String response = "{\"code\":" + String(httpCode) + ",\"body\":\"";
+  // Escape quotes in payload
+  payload.replace("\"", "\\\"");
+  payload.replace("\n", "\\n");
+  response += payload + "\"}";
+
+  return response;
 }
 
-
-// WiFi Event Handler für AP-Verbindungen
-void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info){
-  switch(event){
-    case ARDUINO_EVENT_WIFI_AP_START:
-      Serial.println("\n[AP] Access Point gestartet!");
-      Serial.printf("[AP] SSID: %s\n", AP_SSID);
-      Serial.printf("[AP] IP: %s\n", WiFi.softAPIP().toString().c_str());
-      Serial.println("[AP] Warte auf Client-Verbindungen...\n");
-      break;
-      
-    case ARDUINO_EVENT_WIFI_AP_STACONNECTED:
-      Serial.printf("\n[WIFI] Neues Gerät verbunden!\n");
-      Serial.printf("[WIFI] MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-        info.wifi_ap_staconnected.mac[0], info.wifi_ap_staconnected.mac[1],
-        info.wifi_ap_staconnected.mac[2], info.wifi_ap_staconnected.mac[3],
-        info.wifi_ap_staconnected.mac[4], info.wifi_ap_staconnected.mac[5]);
-      Serial.printf("[WIFI] Verbundene Geräte: %d\n\n", WiFi.softAPgetStationNum());
-      break;
-      
-    case ARDUINO_EVENT_WIFI_AP_STADISCONNECTED:
-      Serial.printf("\n[WIFI] Gerät getrennt!\n");
-      Serial.printf("[WIFI] MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-        info.wifi_ap_stadisconnected.mac[0], info.wifi_ap_stadisconnected.mac[1],
-        info.wifi_ap_stadisconnected.mac[2], info.wifi_ap_stadisconnected.mac[3],
-        info.wifi_ap_stadisconnected.mac[4], info.wifi_ap_stadisconnected.mac[5]);
-      Serial.printf("[WIFI] Verbundene Geräte: %d\n\n", WiFi.softAPgetStationNum());
-      break;
-      
-    default:
-      break;
+// Delay mit Yield (verhindert Watchdog Reset)
+void delayWithYield(unsigned long ms)
+{
+  unsigned long start = millis();
+  while (millis() - start < ms)
+  {
+    yield();
+    delay(1);
   }
 }
 
-void setup(){
+// Schaltet ein Relay über Forward-Request
+void setRelayByForward(String device, int idx, int val)
+{
+  String path = "/set?idx=" + String(idx) + "&val=" + String(val);
+  String response = forwardRequest(device, "GET", path, "");
+  Serial.println("[Relay] " + device + " idx=" + String(idx) + " val=" + String(val));
+}
+
+// ============================================================================
+// SCENARIO DEFINITIONS
+// ============================================================================
+
+void scenario_kohlekraftwerk(int state)
+{
+  if (state == 0)
+  {
+    // === KOHLEKRAFTWERK AUS ===
+    Serial.println("[Scenario] Kohlekraftwerk AUS");
+
+    setRelayByForward("esp1", 0, 0); // Global Relay 1 aus
+    delay(50);
+    setRelayByForward("esp1", 1, 0); // Global Relay 2 aus
+    delay(50);
+    setRelayByForward("esp1", 4, 0); // Global Relay 5 aus
+    delay(50);
+    setRelayByForward("esp2", 0, 0); // Global Relay 9 aus
+
+    Serial.println("[Scenario] Kohlekraftwerk AUS - Fertig");
+  }
+  else if (state == 1)
+  {
+    // === KOHLEKRAFTWERK EIN ===
+    Serial.println("[Scenario] Kohlekraftwerk EIN - Start");
+
+    // Schritt 1: Mehrere Relays einschalten
+    setRelayByForward("esp1", 0, 1); // Global Relay 1 ein
+    delay(50);
+    setRelayByForward("esp1", 1, 1); // Global Relay 2 ein
+    delay(50);
+    setRelayByForward("esp1", 4, 1); // Global Relay 5 ein
+    delay(50);
+    setRelayByForward("esp2", 0, 1); // Global Relay 9 ein
+
+    // Schritt 2: 5 Sekunden warten
+    Serial.println("[Scenario] Warte 5 Sekunden...");
+    delayWithYield(5000);
+
+    // Schritt 3: Relay 2 wieder ausschalten
+    Serial.println("[Scenario] Relay 2 wird ausgeschaltet");
+    setRelayByForward("esp1", 1, 0); // Global Relay 2 aus
+
+    Serial.println("[Scenario] Kohlekraftwerk EIN - Fertig");
+  }
+}
+
+void scenario_test(int state)
+{
+  switch (state)
+  {
+  case 0:
+    Serial.println("[Scenario] Test Reset");
+    for (int i = 0; i < 8; i++)
+    {
+      setRelayByForward("esp1", i, 0);
+      delay(50);
+    }
+    for (int i = 0; i < 4; i++)
+    {
+      setRelayByForward("esp2", i, 0);
+      delay(50);
+    }
+    break;
+
+  case 1:
+    Serial.println("[Scenario] Test Sequenz 1");
+    setRelayByForward("esp1", 0, 1);
+    delayWithYield(2000);
+    setRelayByForward("esp1", 1, 1);
+    delayWithYield(2000);
+    setRelayByForward("esp1", 2, 1);
+    delayWithYield(2000);
+    setRelayByForward("esp1", 0, 0);
+    delayWithYield(1000);
+    setRelayByForward("esp1", 1, 0);
+    delayWithYield(1000);
+    setRelayByForward("esp1", 2, 0);
+    break;
+
+  case 2:
+    Serial.println("[Scenario] Test Sequenz 2");
+    setRelayByForward("esp2", 0, 1);
+    delayWithYield(1000);
+    setRelayByForward("esp2", 1, 1);
+    delayWithYield(1000);
+    setRelayByForward("esp2", 0, 0);
+    delayWithYield(1000);
+    setRelayByForward("esp2", 1, 0);
+    break;
+  }
+}
+
+void scenario_alles(int state)
+{
+  if (state == 0)
+  {
+    Serial.println("[Scenario] Alle Relays AUS");
+    for (int i = 0; i < 8; i++)
+    {
+      setRelayByForward("esp1", i, 0);
+      delay(50);
+    }
+    for (int i = 0; i < 4; i++)
+    {
+      setRelayByForward("esp2", i, 0);
+      delay(50);
+    }
+  }
+  else if (state == 1)
+  {
+    Serial.println("[Scenario] Alle Relays AN");
+    for (int i = 0; i < 8; i++)
+    {
+      setRelayByForward("esp1", i, 1);
+      delay(50);
+    }
+    for (int i = 0; i < 4; i++)
+    {
+      setRelayByForward("esp2", i, 1);
+      delay(50);
+    }
+  }
+}
+
+// ============================================================================
+// WEB SERVER HANDLERS
+// ============================================================================
+
+// GET /clients - Liste aller registrierten Clients
+void handleClients()
+{
+  String json = "{\"clients\":[";
+  bool first = true;
+
+  for (int i = 0; i < MAX_CLIENTS; i++)
+  {
+    if (clients[i].name.length() > 0)
+    {
+      if (!first)
+        json += ",";
+      json += "{\"name\":\"" + clients[i].name + "\",";
+      json += "\"ip\":\"" + clients[i].ip + "\",";
+      json += "\"lastSeen\":" + String(clients[i].lastSeen) + "}";
+      first = false;
+    }
+  }
+  json += "]}";
+
+  server.send(200, "application/json", json);
+}
+
+// POST /register - Client registrieren
+void handleRegister()
+{
+  if (!server.hasArg("plain"))
+  {
+    server.send(400, "application/json", "{\"error\":\"No body\"}");
+    return;
+  }
+
+  String body = server.arg("plain");
+  // Erwarte: {"name":"esp1"}
+
+  int nameStart = body.indexOf("\"name\":\"") + 8;
+  int nameEnd = body.indexOf("\"", nameStart);
+  String name = body.substring(nameStart, nameEnd);
+
+  String clientIP = server.client().remoteIP().toString();
+  registerClient(name, clientIP);
+
+  server.send(200, "application/json", "{\"success\":true}");
+}
+
+// POST /forward - Request zu Client weiterleiten
+void handleForward()
+{
+  if (!server.hasArg("plain"))
+  {
+    server.send(400, "application/json", "{\"error\":\"No body\"}");
+    return;
+  }
+
+  String body = server.arg("plain");
+
+  // Parse JSON manually (simple parser)
+  String target = "";
+  String method = "";
+  String path = "";
+  String reqBody = "";
+
+  int pos = body.indexOf("\"target\":\"");
+  if (pos >= 0)
+  {
+    int start = pos + 10;
+    int end = body.indexOf("\"", start);
+    target = body.substring(start, end);
+  }
+
+  pos = body.indexOf("\"method\":\"");
+  if (pos >= 0)
+  {
+    int start = pos + 10;
+    int end = body.indexOf("\"", start);
+    method = body.substring(start, end);
+  }
+
+  pos = body.indexOf("\"path\":\"");
+  if (pos >= 0)
+  {
+    int start = pos + 8;
+    int end = body.indexOf("\"", start);
+    path = body.substring(start, end);
+  }
+
+  pos = body.indexOf("\"body\":\"");
+  if (pos >= 0)
+  {
+    int start = pos + 8;
+    int end = body.lastIndexOf("\"");
+    reqBody = body.substring(start, end);
+  }
+
+  String response = forwardRequest(target, method, path, reqBody);
+  server.send(200, "application/json", response);
+}
+
+// GET /scenario?name=X&state=Y - Szenario ausführen
+void handleScenario()
+{
+  if (!server.hasArg("name") || !server.hasArg("state"))
+  {
+    server.send(400, "application/json",
+                "{\"error\":\"Missing parameters. Usage: /scenario?name=<n>&state=<state>\"}");
+    return;
+  }
+
+  String name = server.arg("name");
+  int state = server.arg("state").toInt();
+
+  Serial.println("====================================");
+  Serial.println("[Scenario] Request: " + name + " | State: " + String(state));
+  Serial.println("====================================");
+
+  if (name == "kohlekraftwerk")
+  {
+    scenario_kohlekraftwerk(state);
+    server.send(200, "application/json",
+                "{\"success\":true,\"scenario\":\"kohlekraftwerk\",\"state\":" + String(state) + "}");
+  }
+  else if (name == "test")
+  {
+    scenario_test(state);
+    server.send(200, "application/json",
+                "{\"success\":true,\"scenario\":\"test\",\"state\":" + String(state) + "}");
+  }
+  else if (name == "alles")
+  {
+    scenario_alles(state);
+    server.send(200, "application/json",
+                "{\"success\":true,\"scenario\":\"alles\",\"state\":" + String(state) + "}");
+  }
+  else
+  {
+    server.send(404, "application/json",
+                "{\"error\":\"Unknown scenario: " + name + "\"}");
+  }
+
+  Serial.println("[Scenario] Request completed");
+}
+
+// GET / - Info Page
+void handleRoot()
+{
+  String html = "<html><body><h1>ESP-Host</h1>";
+  html += "<p>Access Point: " + String(AP_SSID) + "</p>";
+  html += "<p>IP: " + WiFi.softAPIP().toString() + "</p>";
+  html += "<p>Connected WiFi Devices: " + String(WiFi.softAPgetStationNum()) + "</p>";
+  html += "<h2>Registered Clients:</h2><ul>";
+
+  for (int i = 0; i < MAX_CLIENTS; i++)
+  {
+    if (clients[i].name.length() > 0)
+    {
+      html += "<li>" + clients[i].name + " @ " + clients[i].ip;
+      unsigned long age = (millis() - clients[i].lastSeen) / 1000;
+      html += " (last seen " + String(age) + "s ago)</li>";
+    }
+  }
+
+  html += "</ul></body></html>";
+  server.send(200, "text/html", html);
+}
+
+// ============================================================================
+// SETUP
+// ============================================================================
+
+void setup()
+{
   Serial.begin(115200);
-  delay(1000);
-  
-  Serial.println("\n\n========================================");
-  Serial.println("    ESP HOST - Starte System...");
-  Serial.println("========================================\n");
-  
-  for(int i=0;i<MAX_CLIENTS;i++){ 
-    clients[i].name=""; 
-    clients[i].ip=""; 
-    clients[i].lastSeen=0; 
-  }
+  Serial.println("\n\n=== ESP-Host starting ===");
 
-  // WiFi Event Handler registrieren
-  WiFi.onEvent(onWiFiEvent);
-  
-  IPAddress apIP(192,168,4,1);
-  IPAddress netM(255,255,255,0);
-  WiFi.softAPConfig(apIP, apIP, netM);
-  
-  Serial.println("[SETUP] Starte Access Point...");
-  WiFi.softAP(AP_SSID, AP_PASS, 1, 0, 4);
-  
-  delay(500);
-  
-  Serial.printf("\n[OK] AP gestartet!\n");
-  Serial.printf("[OK] SSID: %s\n", AP_SSID);
-  Serial.printf("[OK] Passwort: %s\n", AP_PASS);
-  Serial.printf("[OK] IP: %s\n", WiFi.softAPIP().toString().c_str());
-  Serial.printf("[OK] Max Clients: 4\n\n");
+  // WiFi Access Point starten
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(AP_SSID, AP_PASSWORD);
 
-  server.on("/register", HTTP_POST, handleRegister);
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+
+  // Web Server Routes
+  server.on("/", HTTP_GET, handleRoot);
   server.on("/clients", HTTP_GET, handleClients);
+  server.on("/register", HTTP_POST, handleRegister);
   server.on("/forward", HTTP_POST, handleForward);
+  server.on("/scenario", HTTP_GET, handleScenario);
+
   server.begin();
-  
-  Serial.println("[OK] HTTP Server gestartet!");
-  Serial.println("\nEndpoints:");
-  Serial.println("  POST /register - Client registrieren");
-  Serial.println("  GET  /clients  - Liste aller Clients");
-  Serial.println("  POST /forward  - Request weiterleiten");
-  Serial.println("\n========================================");
-  Serial.println("       System bereit!");
-  Serial.println("========================================\n");
+  Serial.println("HTTP server started");
+  Serial.println("=== ESP-Host ready ===\n");
 }
 
-void loop(){
+// ============================================================================
+// MAIN LOOP
+// ============================================================================
+
+void loop()
+{
   server.handleClient();
-  
+
   // Überwachung der verbundenen WiFi-Geräte
   int currentStationCount = WiFi.softAPgetStationNum();
-  if(currentStationCount != lastStationCount){
+  if (currentStationCount != lastStationCount)
+  {
     Serial.printf("[INFO] Anzahl verbundener WiFi-Geräte: %d\n", currentStationCount);
     lastStationCount = currentStationCount;
   }
-  
-  // Client-Timeout prüfen
+
+  // Client-Timeout prüfen (2 Minuten Inaktivität)
   unsigned long now = millis();
-  for(int i=0;i<MAX_CLIENTS;i++){
-    if(clients[i].name.length() && now - clients[i].lastSeen > 120000){
-      Serial.printf("[TIMEOUT] Client '%s' entfernt (keine Aktivität seit 2 Minuten)\n", 
-        clients[i].name.c_str());
-      clients[i].name=""; 
-      clients[i].ip=""; 
-      clients[i].lastSeen=0;
+  for (int i = 0; i < MAX_CLIENTS; i++)
+  {
+    if (clients[i].name.length() > 0 && now - clients[i].lastSeen > 120000)
+    {
+      Serial.printf("[TIMEOUT] Client '%s' entfernt (keine Aktivität seit 2 Minuten)\n",
+                    clients[i].name.c_str());
+      clients[i].name = "";
+      clients[i].ip = "";
+      clients[i].lastSeen = 0;
+      clientCount--;
     }
   }
-  
+
   delay(10); // Kleine Pause für Stabilität
+  yield();
 }
