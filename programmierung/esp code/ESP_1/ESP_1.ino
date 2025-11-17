@@ -89,31 +89,112 @@ void handleSend(){
   }
 
   String body = server.arg("plain");
-  int idx1 = body.indexOf("\"cmd\"");
-  int idx2 = body.indexOf("\"timeout\"");
+  Serial.println("[RS232] Received body: " + body);
   
   String cmd = ""; 
   unsigned long timeout = DEFAULT_REPLY_TIMEOUT;
   
-  // Parse cmd
-  if(idx1>=0){
-    int q1 = body.indexOf("\"", idx1+5);
-    int q2 = body.indexOf("\"", q1+1);
-    if(q1>=0 && q2>q1) cmd = body.substring(q1+1,q2);
+  // Suche nach "cmd" (kann escaped sein als \"cmd\" oder normal "cmd")
+  int cmdKeyPos = body.indexOf("\"cmd\"");
+  if(cmdKeyPos < 0) {
+    // Versuche escaped Version
+    cmdKeyPos = body.indexOf("\\\"cmd\\\"");
   }
   
-  // Parse timeout
-  if(idx2>=0){
-    int colon = body.indexOf(":", idx2);
-    int comma = body.indexOf("}", colon);
-    if(colon>=0 && comma>colon){ 
-      String tstr = body.substring(colon+1,comma); 
-      tstr.trim(); 
-      timeout = tstr.toInt(); 
+  if(cmdKeyPos >= 0) {
+    // Finde den Doppelpunkt nach "cmd"
+    int colonPos = body.indexOf(":", cmdKeyPos + 5);
+    if(colonPos < 0 && cmdKeyPos >= 0) {
+      // Versuche nach escaped Version zu suchen
+      colonPos = body.indexOf(":", cmdKeyPos + 7); // 7 für \"cmd\"
+    }
+    
+    if(colonPos >= 0) {
+      // Überspringe Leerzeichen nach dem Doppelpunkt
+      int valueStart = colonPos + 1;
+      while(valueStart < body.length() && body.charAt(valueStart) == ' ') {
+        valueStart++;
+      }
+      
+      // Prüfe ob es ein String ist (beginnt mit " oder \")
+      bool isEscaped = false;
+      if(valueStart < body.length() && body.charAt(valueStart) == '\\' && 
+         valueStart + 1 < body.length() && body.charAt(valueStart + 1) == '"') {
+        // Escaped quote: \"
+        valueStart += 2; // Überspringe \"
+        isEscaped = true;
+      } else if(valueStart < body.length() && body.charAt(valueStart) == '"') {
+        // Normal quote: "
+        valueStart++; // Überspringe "
+        isEscaped = false;
+      }
+      
+      if(valueStart < body.length()) {
+        // Finde schließendes " (beachte escaped quotes)
+        int valueEnd = valueStart;
+        while(valueEnd < body.length()) {
+          if(isEscaped) {
+            // Suche nach \" (escaped quote)
+            if(valueEnd + 1 < body.length() && 
+               body.charAt(valueEnd) == '\\' && 
+               body.charAt(valueEnd + 1) == '"') {
+              // Gefunden: \"
+              break;
+            }
+            valueEnd++;
+          } else {
+            // Suche nach " (nicht escaped)
+            if(body.charAt(valueEnd) == '"' && 
+               (valueEnd == 0 || body.charAt(valueEnd - 1) != '\\')) {
+              break;
+            }
+            valueEnd++;
+          }
+        }
+        
+        if(valueEnd > valueStart) {
+          cmd = body.substring(valueStart, valueEnd);
+          Serial.println("[RS232] Extracted cmd: '" + cmd + "'");
+        }
+      }
+    }
+  }
+  
+  // Parse timeout - ähnlich wie cmd
+  int timeoutKeyPos = body.indexOf("\"timeout\"");
+  if(timeoutKeyPos < 0) {
+    timeoutKeyPos = body.indexOf("\\\"timeout\\\"");
+  }
+  
+  if(timeoutKeyPos >= 0) {
+    int colonPos = body.indexOf(":", timeoutKeyPos + 9);
+    if(colonPos < 0) {
+      colonPos = body.indexOf(":", timeoutKeyPos + 11); // 11 für \"timeout\"
+    }
+    
+    if(colonPos >= 0) {
+      int valueStart = colonPos + 1;
+      while(valueStart < body.length() && (body.charAt(valueStart) == ' ' || body.charAt(valueStart) == '\t')) {
+        valueStart++;
+      }
+      
+      // Finde Ende des Zahlenwerts (Komma oder })
+      int valueEnd = valueStart;
+      while(valueEnd < body.length() && body.charAt(valueEnd) != ',' && body.charAt(valueEnd) != '}') {
+        valueEnd++;
+      }
+      
+      if(valueEnd > valueStart) {
+        String tstr = body.substring(valueStart, valueEnd);
+        tstr.trim();
+        timeout = tstr.toInt();
+        Serial.println("[RS232] Extracted timeout: " + String(timeout));
+      }
     }
   }
   
   if(cmd.length()==0){ 
+    Serial.println("[RS232] ERROR: Kein cmd gefunden in body: " + body);
     server.send(400,"text/plain","Kein cmd gefunden"); 
     return; 
   }
@@ -143,40 +224,62 @@ void handleSend(){
   }
   Serial.println();
   
+  // WICHTIG: Leere den Serial-Buffer vor dem Senden
+  while(MySerial.available()) {
+    MySerial.read(); // Entferne alte Daten
+  }
+  
   // Sende Befehl an MFC
   MySerial.print(cmd);
+  MySerial.flush(); // Stelle sicher, dass alles gesendet wurde
+  
+  // Kleine Pause damit das Gerät Zeit hat zu antworten
+  delay(50);
   
   // Warte auf Antwort
   String resp = "";
   unsigned long start = millis();
+  bool responseComplete = false;
   
-  while(millis() - start < timeout){
+  while(millis() - start < timeout && !responseComplete){
     while(MySerial.available()){
       char c = MySerial.read();
       resp += c;
       
       // ProPar Antwort endet mit \r\n
       if(resp.endsWith("\r\n")){
-        // Vollständige Antwort erhalten
-        Serial.print("RS232 RX: ");
-        for(size_t i=0; i<resp.length(); i++){
-          if(resp[i] == '\r') Serial.print("\\r");
-          else if(resp[i] == '\n') Serial.print("\\n");
-          else Serial.print(resp[i]);
-        }
-        Serial.println();
-        
-        server.send(200, "text/plain", resp);
-        return;
+        responseComplete = true;
+        break;
       }
     }
-    delay(10); // Kleine Pause um CPU zu entlasten
+    
+    if(!responseComplete) {
+      delay(10); // Kleine Pause um CPU zu entlasten
+    }
   }
   
-  // Timeout
-  if(resp.length() > 0){
-    Serial.print("RS232 RX (Timeout): ");
-    Serial.println(resp);
+  if(responseComplete){
+    // Vollständige Antwort erhalten
+    Serial.print("RS232 RX: ");
+    for(size_t i=0; i<resp.length(); i++){
+      if(resp[i] == '\r') Serial.print("\\r");
+      else if(resp[i] == '\n') Serial.print("\\n");
+      else if(resp[i] == '\t') Serial.print("\\t");
+      else Serial.print(resp[i]);
+    }
+    Serial.println();
+    
+    server.send(200, "text/plain", resp);
+  } else if(resp.length() > 0){
+    // Timeout aber teilweise Antwort erhalten
+    Serial.print("RS232 RX (Timeout, partial): ");
+    for(size_t i=0; i<resp.length(); i++){
+      if(resp[i] == '\r') Serial.print("\\r");
+      else if(resp[i] == '\n') Serial.print("\\n");
+      else if(resp[i] == '\t') Serial.print("\\t");
+      else Serial.print(resp[i]);
+    }
+    Serial.println();
     server.send(200, "text/plain", resp);
   } else {
     Serial.println("RS232 RX: (keine Antwort)");

@@ -304,6 +304,23 @@ async function stopTrain() {
 // RS232
 // ============================================================================
 
+function updateRsCommand(percent) {
+  // Konvertiere Prozent (0-100) zu Wert (0-32000)
+  const value = Math.round((percent / 100) * 32000);
+  
+  // Konvertiere zu Hex (4 Zeichen, uppercase)
+  const hexValue = value.toString(16).toUpperCase().padStart(4, '0');
+  
+  // Aktualisiere Anzeigen
+  document.getElementById('rs_percent').textContent = percent;
+  document.getElementById('rs_hex_value').textContent = hexValue;
+  
+  // Generiere Command: :0603010121[HEX]\r\n
+  // Format: :06 (Länge) 03 (Node) 01 (Befehl) 01 (Prozess) 21 (Parameter) [HEX]
+  const cmd = ':0603010121' + hexValue;
+  document.getElementById('rs_cmd').value = cmd;
+}
+
 async function sendRs() {
   let cmd = document.getElementById('rs_cmd').value.trim();
   let timeout = parseInt(document.getElementById('rs_timeout').value) || 500;

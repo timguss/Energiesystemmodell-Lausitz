@@ -59,11 +59,18 @@
 <div class="card">
   <div class="section-title">ESP1 — RS232</div>
   <div style="margin-top:8px">
-    <input id="rs_cmd" style="width:60%" placeholder=":06030401210120">
-    <input id="rs_timeout" type="number" value="500" style="width:80px">
-    <button onclick="sendRs()">Senden</button>
-  </div>
-  <pre id="rs_reply">—</pre>
+    <div style="margin-bottom:12px">
+      <label>Sollwert: <span id="rs_percent">50</span>%</label>
+      <input id="rs_slider" type="range" min="0" max="100" value="50" 
+             oninput="updateRsCommand(this.value)" style="width:200px; margin:0 10px;">
+      <span id="rs_hex_value">3E80</span>
+    </div>
+    <div style="margin-bottom:8px">
+      <input id="rs_cmd" style="width:60%" placeholder=":06030101213E80">
+      <input id="rs_timeout" type="number" value="500" style="width:80px">
+      <button onclick="sendRs()">Senden</button>
+    </div>
+    <pre id="rs_reply">—</pre>
 </div>
 
 <script src="/static/app.js"></script>

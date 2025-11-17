@@ -176,3 +176,18 @@ pre {
   overflow-x: auto;
   font-size: 13px;
 }
+
+/* RS232 Slider Section */
+#rs_slider {
+  vertical-align: middle;
+}
+
+#rs_hex_value {
+  font-family: monospace;
+  font-weight: 600;
+  color: #2196f3;
+  background: #e3f2fd;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 14px;
+}
