@@ -35,7 +35,6 @@ struct ClientDevice {
 };
 
 ClientDevice clients[MAX_CLIENTS];
-int clientCount = 0;
 
 // Monitoring
 int lastStationCount = 0;
@@ -83,7 +82,6 @@ void registerClient(String name, String ip) {
       clients[i].name = name;
       clients[i].ip = ip;
       clients[i].lastSeen = millis();
-      clientCount++;
       Serial.println("[Client] Registered: " + name + " @ " + ip);
       return;
     }
@@ -98,6 +96,14 @@ String forwardRequest(String target, String method, String path, String body) {
   if (ip == "") {
     Serial.println("[Forward] ERROR: Client '" + target + "' not found");
     return "{\"error\":\"Client not found\"}";
+  }
+  
+  // Update lastSeen timestamp for this client (FIX: prevent timeout of active clients)
+  for (int i = 0; i < MAX_CLIENTS; i++) {
+    if (clients[i].name.equals(target)) {
+      clients[i].lastSeen = millis();
+      break;
+    }
   }
   
   String url = "http://" + ip + path;
@@ -145,10 +151,19 @@ void delayWithYield(unsigned long ms) {
 }
 
 // Schaltet ein Relay über Forward-Request
-void setRelayByForward(String device, int idx, int val) {
+// Returns true on success, false on failure
+bool setRelayByForward(String device, int idx, int val) {
   String path = "/set?idx=" + String(idx) + "&val=" + String(val);
   String response = forwardRequest(device, "GET", path, "");
   Serial.println("[Relay] " + device + " idx=" + String(idx) + " val=" + String(val));
+  
+  // Check if request was successful (response should contain "code":200)
+  if (response.indexOf("\"code\":200") > 0) {
+    return true;
+  } else {
+    Serial.println("[Relay] ERROR: Failed to set relay - " + response);
+    return false;
+  }
 }
 
 // ============================================================================
@@ -158,27 +173,27 @@ void setRelayByForward(String device, int idx, int val) {
 void scenario_kohlekraftwerk(int state) {
   if (state == 0) {
     Serial.println("[Scenario] Kohlekraftwerk AUS");
-    setRelayByForward("esp1", 0, 0);
+    if (!setRelayByForward("esp1", 0, 0)) return;
     delay(50);
-    setRelayByForward("esp1", 1, 0);
+    if (!setRelayByForward("esp1", 1, 0)) return;
     delay(50);
-    setRelayByForward("esp1", 4, 0);
+    if (!setRelayByForward("esp1", 4, 0)) return;
     delay(50);
-    setRelayByForward("esp2", 0, 0);
+    if (!setRelayByForward("esp2", 0, 0)) return;
     Serial.println("[Scenario] Kohlekraftwerk AUS - Fertig");
   } else if (state == 1) {
     Serial.println("[Scenario] Kohlekraftwerk EIN - Start");
-    setRelayByForward("esp1", 0, 1);
+    if (!setRelayByForward("esp1", 0, 1)) return;
     delay(50);
-    setRelayByForward("esp1", 1, 1);
+    if (!setRelayByForward("esp1", 1, 1)) return;
     delay(50);
-    setRelayByForward("esp1", 4, 1);
+    if (!setRelayByForward("esp1", 4, 1)) return;
     delay(50);
-    setRelayByForward("esp2", 0, 1);
+    if (!setRelayByForward("esp2", 0, 1)) return;
     Serial.println("[Scenario] Warte 5 Sekunden...");
     delayWithYield(5000);
     Serial.println("[Scenario] Relay 2 wird ausgeschaltet");
-    setRelayByForward("esp1", 1, 0);
+    if (!setRelayByForward("esp1", 1, 0)) return;
     Serial.println("[Scenario] Kohlekraftwerk EIN - Fertig");
   }
 }
@@ -188,39 +203,39 @@ void scenario_test(int state) {
     case 0:
       Serial.println("[Scenario] Test Reset");
       for (int i = 0; i < 8; i++) {
-        setRelayByForward("esp1", i, 0);
+        if (!setRelayByForward("esp1", i, 0)) return;
         delay(50);
       }
       for (int i = 0; i < 4; i++) {
-        setRelayByForward("esp2", i, 0);
+        if (!setRelayByForward("esp2", i, 0)) return;
         delay(50);
       }
       break;
       
     case 1:
       Serial.println("[Scenario] Test Sequenz 1");
-      setRelayByForward("esp1", 0, 1);
+      if (!setRelayByForward("esp1", 0, 1)) return;
       delayWithYield(2000);
-      setRelayByForward("esp1", 1, 1);
+      if (!setRelayByForward("esp1", 1, 1)) return;
       delayWithYield(2000);
-      setRelayByForward("esp1", 2, 1);
+      if (!setRelayByForward("esp1", 2, 1)) return;
       delayWithYield(2000);
-      setRelayByForward("esp1", 0, 0);
+      if (!setRelayByForward("esp1", 0, 0)) return;
       delayWithYield(1000);
-      setRelayByForward("esp1", 1, 0);
+      if (!setRelayByForward("esp1", 1, 0)) return;
       delayWithYield(1000);
-      setRelayByForward("esp1", 2, 0);
+      if (!setRelayByForward("esp1", 2, 0)) return;
       break;
       
     case 2:
       Serial.println("[Scenario] Test Sequenz 2");
-      setRelayByForward("esp2", 0, 1);
+      if (!setRelayByForward("esp2", 0, 1)) return;
       delayWithYield(1000);
-      setRelayByForward("esp2", 1, 1);
+      if (!setRelayByForward("esp2", 1, 1)) return;
       delayWithYield(1000);
-      setRelayByForward("esp2", 0, 0);
+      if (!setRelayByForward("esp2", 0, 0)) return;
       delayWithYield(1000);
-      setRelayByForward("esp2", 1, 0);
+      if (!setRelayByForward("esp2", 1, 0)) return;
       break;
   }
 }
@@ -229,21 +244,21 @@ void scenario_alles(int state) {
   if (state == 0) {
     Serial.println("[Scenario] Alle Relays AUS");
     for (int i = 0; i < 8; i++) {
-      setRelayByForward("esp1", i, 0);
+      if (!setRelayByForward("esp1", i, 0)) return;
       delay(50);
     }
     for (int i = 0; i < 4; i++) {
-      setRelayByForward("esp2", i, 0);
+      if (!setRelayByForward("esp2", i, 0)) return;
       delay(50);
     }
   } else if (state == 1) {
     Serial.println("[Scenario] Alle Relays AN");
     for (int i = 0; i < 8; i++) {
-      setRelayByForward("esp1", i, 1);
+      if (!setRelayByForward("esp1", i, 1)) return;
       delay(50);
     }
     for (int i = 0; i < 4; i++) {
-      setRelayByForward("esp2", i, 1);
+      if (!setRelayByForward("esp2", i, 1)) return;
       delay(50);
     }
   }
@@ -480,7 +495,6 @@ void loop() {
       clients[i].name = ""; 
       clients[i].ip = ""; 
       clients[i].lastSeen = 0;
-      clientCount--;
     }
   }
   

@@ -341,8 +341,12 @@ def api_esp3_set_pwm():
 # ============================================================================
 
 @app.route("/")
-def index():
-    return render_template("index.html", host=HOST)
+def landing():
+    return render_template("landing.html")
+
+@app.route("/dashboard")
+def dashboard():
+    return render_template("dashboard.html", host=HOST)
 
 # ============================================================================
 # MAIN

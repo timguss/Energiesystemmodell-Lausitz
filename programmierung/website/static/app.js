@@ -106,8 +106,17 @@ async function buildRelays() {
 }
 
 async function toggleRelay(global_idx, val, inputElement) {
+  // Prevent duplicate requests
+  const requestKey = 'relay-' + global_idx;
+  if (pendingRequests.has(requestKey)) {
+    console.log('Relay request already pending for', global_idx);
+    inputElement.checked = !inputElement.checked; // Revert
+    return;
+  }
+  
   // Sofort visuelles Feedback
   inputElement.disabled = true;
+  pendingRequests.add(requestKey);
   
   try {
     let r = await fetch('/api/relay/set', {
@@ -128,6 +137,8 @@ async function toggleRelay(global_idx, val, inputElement) {
     alert('Fehler beim Schalten: ' + e); 
     inputElement.checked = !inputElement.checked; // Zurücksetzen
     inputElement.disabled = false;
+  } finally {
+    pendingRequests.delete(requestKey);
   }
 }
 

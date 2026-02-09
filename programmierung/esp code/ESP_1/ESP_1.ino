@@ -280,9 +280,21 @@ void handleSend(){
       else Serial.print(resp[i]);
     }
     Serial.println();
+    
+    // Clear buffer after timeout to prevent garbage affecting next command
+    while(MySerial.available()) {
+      MySerial.read();
+    }
+    
     server.send(200, "text/plain", resp);
   } else {
     Serial.println("RS232 RX: (keine Antwort)");
+    
+    // Clear buffer after no response to prevent garbage affecting next command
+    while(MySerial.available()) {
+      MySerial.read();
+    }
+    
     server.send(200, "text/plain", "(keine Antwort)");
   }
 }

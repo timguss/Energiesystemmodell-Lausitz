@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Energiesystemmodell Lausitz</title>
+    <meta name="description" content="Interaktives Energiesystemmodell für die Region Lausitz - Visualisierung und Steuerung erneuerbarer Energiesysteme">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/landing.css">
+</head>
+<body>
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-background"></div>
+        <div class="particles" id="particles"></div>
+        
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="logo">
+                    <span class="logo-icon">⚡</span>
+                    <span class="logo-text">Energiesystem Lausitz</span>
+                </div>
+                <a href="/dashboard" class="nav-link">Dashboard</a>
+            </div>
+        </nav>
+
+        <div class="hero-content">
+            <div class="hero-badge">
+                <span class="badge-dot"></span>
+                Innovatives Energiemanagement
+            </div>
+            <h1 class="hero-title">
+                Die Zukunft der
+                <span class="gradient-text">Energieversorgung</span>
+            </h1>
+            <p class="hero-description">
+                Interaktives Modell zur Visualisierung und Steuerung komplexer Energiesysteme 
+                in der Region Lausitz. Erleben Sie Energiemanagement in Echtzeit.
+            </p>
+            <div class="hero-buttons">
+                <a href="/dashboard" class="btn btn-primary">
+                    <span>Zum Dashboard</span>
+                    <svg class="btn-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </a>
+                <a href="#features" class="btn btn-secondary">
+                    <span>Mehr erfahren</span>
+                </a>
+            </div>
+            
+            <div class="hero-stats">
+                <div class="stat-item">
+                    <div class="stat-value">3</div>
+                    <div class="stat-label">ESP Module</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">12+</div>
+                    <div class="stat-label">Relais</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">Live</div>
+                    <div class="stat-label">Echtzeit</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Leistungsmerkmale</h2>
+                <p class="section-description">
+                    Umfassende Kontrolle und Überwachung Ihres Energiesystems
+                </p>
+            </div>
+
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                        🎬
+                    </div>
+                    <h3 class="feature-title">Szenarien-Steuerung</h3>
+                    <p class="feature-description">
+                        Vordefinierte Energieszenarien mit einem Klick ausführen. 
+                        Vom Kohlekraftwerk bis zu komplexen Testsequenzen.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                        ⚙️
+                    </div>
+                    <h3 class="feature-title">Relais-Kontrolle</h3>
+                    <p class="feature-description">
+                        Individuelle Steuerung aller Relais über ESP1 und ESP2. 
+                        Präzise Kontrolle für jedes Systemelement.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                        🌡️
+                    </div>
+                    <h3 class="feature-title">Temperatur-Monitoring</h3>
+                    <p class="feature-description">
+                        Echtzeit-Überwachung der Systemtemperaturen mit NTC-Sensoren. 
+                        Thermische Sicherheit garantiert.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                        💨
+                    </div>
+                    <h3 class="feature-title">Wind & Zug Simulation</h3>
+                    <p class="feature-description">
+                        Steuerung von Windkraftanlagen und Zugsimulation mit PWM-Kontrolle. 
+                        Realistische Energieerzeugung.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                        📡
+                    </div>
+                    <h3 class="feature-title">RS232 Kommunikation</h3>
+                    <p class="feature-description">
+                        Direkte Kommunikation mit externen Geräten über RS232. 
+                        Flexible Systemintegration.
+                    </p>
+                </div>
+
+                <div class="feature-card">
+                    <div class="feature-icon" style="background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);">
+                        🔄
+                    </div>
+                    <h3 class="feature-title">Echtzeit-Updates</h3>
+                    <p class="feature-description">
+                        Automatische Aktualisierung aller Systemzustände. 
+                        Immer auf dem neuesten Stand.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- System Architecture Section -->
+    <section class="architecture">
+        <div class="container">
+            <div class="architecture-content">
+                <div class="architecture-text">
+                    <h2 class="section-title">Moderne Systemarchitektur</h2>
+                    <p class="architecture-description">
+                        Das Energiesystemmodell basiert auf einer verteilten ESP-Architektur 
+                        mit zentraler Steuerung über einen Host-ESP. Alle Komponenten kommunizieren 
+                        über ein WiFi-Netzwerk und ermöglichen präzise Kontrolle und Monitoring.
+                    </p>
+                    <ul class="architecture-list">
+                        <li>
+                            <span class="list-icon">✓</span>
+                            <span>ESP-Host als zentrale Steuereinheit</span>
+                        </li>
+                        <li>
+                            <span class="list-icon">✓</span>
+                            <span>Verteilte Client-ESPs für Relais und Sensoren</span>
+                        </li>
+                        <li>
+                            <span class="list-icon">✓</span>
+                            <span>Flask-basierte Web-Oberfläche</span>
+                        </li>
+                        <li>
+                            <span class="list-icon">✓</span>
+                            <span>RESTful API für alle Systemfunktionen</span>
+                        </li>
+                    </ul>
+                    <a href="/dashboard" class="btn btn-primary">
+                        <span>System steuern</span>
+                        <svg class="btn-icon" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </a>
+                </div>
+                <div class="architecture-visual">
+                    <div class="system-diagram">
+                        <div class="diagram-node host-node">
+                            <div class="node-icon">🖥️</div>
+                            <div class="node-label">ESP Host</div>
+                        </div>
+                        <div class="diagram-connections">
+                            <div class="connection-line"></div>
+                            <div class="connection-line"></div>
+                            <div class="connection-line"></div>
+                        </div>
+                        <div class="diagram-clients">
+                            <div class="diagram-node client-node">
+                                <div class="node-icon">📟</div>
+                                <div class="node-label">ESP1</div>
+                            </div>
+                            <div class="diagram-node client-node">
+                                <div class="node-icon">📟</div>
+                                <div class="node-label">ESP2</div>
+                            </div>
+                            <div class="diagram-node client-node">
+                                <div class="node-icon">📟</div>
+                                <div class="node-label">ESP3</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta">
+        <div class="container">
+            <div class="cta-content">
+                <h2 class="cta-title">Bereit, das System zu steuern?</h2>
+                <p class="cta-description">
+                    Greifen Sie auf das vollständige Dashboard zu und übernehmen Sie die Kontrolle 
+                    über alle Systemkomponenten in Echtzeit.
+                </p>
+                <a href="/dashboard" class="btn btn-primary btn-large">
+                    <span>Zum technischen Dashboard</span>
+                    <svg class="btn-icon" width="24" height="24" viewBox="0 0 20 20" fill="none">
+                        <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <span class="logo-icon">⚡</span>
+                    <span class="logo-text">Energiesystem Lausitz</span>
+                </div>
+                <div class="footer-text">
+                    Interaktives Energiesystemmodell © 2026
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="/static/landing.js"></script>
+</body>
+</html>
