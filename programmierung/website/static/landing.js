@@ -250,8 +250,476 @@ document.addEventListener('DOMContentLoaded', () => {
     animateStats();
     initParallax();
     
+    // Initialize control systems
+    loadScenarios();
+    loadRelays();
+    initWindTrainControls();
+    startStatusPolling();
+    
     console.log('🚀 Energiesystem Lausitz - Landing Page loaded');
 });
+
+// ============================================================================
+// CONTROL SYSTEMS - API INTEGRATION
+// ============================================================================
+
+let metaCache = {};
+let pendingRequests = new Set();
+
+// Notification System
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification-toast notification-${type}`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.animation = 'slideInRight 0.3s ease reverse';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+// ============================================================================
+// SCENARIO CONTROLS
+// ============================================================================
+
+async function loadScenarios() {
+    const container = document.getElementById('scenarios-container');
+    if (!container) return;
+    
+    try {
+        const response = await fetch('/api/scenarios');
+        if (!response.ok) throw new Error('Failed to load scenarios');
+        
+        const data = await response.json();
+        container.innerHTML = '';
+        
+        if (data.scenarios && Object.keys(data.scenarios).length > 0) {
+            for (const [key, scenario] of Object.entries(data.scenarios)) {
+                const card = createScenarioCard(key, scenario);
+                container.appendChild(card);
+            }
+        } else {
+            container.innerHTML = '<div class="loading-spinner">Keine Szenarien verfügbar</div>';
+        }
+    } catch (error) {
+        console.error('Error loading scenarios:', error);
+        container.innerHTML = '<div class="loading-spinner">Fehler beim Laden</div>';
+    }
+}
+
+function createScenarioCard(key, scenario) {
+    const card = document.createElement('div');
+    card.className = 'scenario-card';
+    
+    const header = document.createElement('div');
+    header.className = 'scenario-card-header';
+    
+    const name = document.createElement('div');
+    name.className = 'scenario-name';
+    name.textContent = scenario.name;
+    header.appendChild(name);
+    
+    const buttons = document.createElement('div');
+    buttons.className = 'scenario-buttons';
+    
+    scenario.states.forEach(state => {
+        const btn = document.createElement('button');
+        btn.className = 'scenario-state-btn';
+        btn.textContent = state.name;
+        btn.title = state.description || '';
+        btn.onclick = () => executeScenario(key, state.id, state.name, btn);
+        buttons.appendChild(btn);
+    });
+    
+    card.appendChild(header);
+    card.appendChild(buttons);
+    return card;
+}
+
+async function executeScenario(scenarioName, state, stateName, buttonElement) {
+    const statusBadge = document.getElementById('scenario-status');
+    buttonElement.disabled = true;
+    const originalText = buttonElement.textContent;
+    buttonElement.textContent = stateName + ' ...';
+    
+    if (statusBadge) statusBadge.textContent = 'Ausführung...';
+    
+    try {
+        const response = await fetch('/api/scenario/execute', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({scenario: scenarioName, state: state})
+        });
+        
+        if (!response.ok) throw new Error('Request failed');
+        const result = await response.json();
+        
+        if (result.success || result.host_response) {
+            buttonElement.textContent = stateName + ' ✓';
+            if (statusBadge) statusBadge.textContent = 'Erfolgreich';
+            showNotification(`Szenario "${stateName}" erfolgreich ausgeführt`, 'success');
+            
+            // Refresh status displays
+            setTimeout(() => {
+                refreshAllStatus();
+                buttonElement.textContent = originalText;
+                buttonElement.disabled = false;
+                if (statusBadge) statusBadge.textContent = 'Bereit';
+            }, 2000);
+        } else {
+            throw new Error(result.error || 'Unknown error');
+        }
+    } catch (error) {
+        console.error('Scenario execution error:', error);
+        buttonElement.textContent = stateName + ' ✗';
+        if (statusBadge) statusBadge.textContent = 'Fehler';
+        showNotification(`Fehler: ${error.message}`, 'error');
+        
+        setTimeout(() => {
+            buttonElement.textContent = originalText;
+            buttonElement.disabled = false;
+            if (statusBadge) statusBadge.textContent = 'Bereit';
+        }, 2000);
+    }
+}
+
+// ============================================================================
+// RELAY CONTROLS
+// ============================================================================
+
+// ============================================================================
+// SYSTEM CONTROLS (Coal, Gas, Reserve)
+// ============================================================================
+
+async function loadRelays() {
+    // Clear containers
+    const coalContainer = document.getElementById('coal-controls');
+    const gasContainer = document.getElementById('gas-controls');
+    const reserveContainer = document.getElementById('reserve-controls');
+    
+    if (coalContainer) coalContainer.innerHTML = '';
+    if (gasContainer) gasContainer.innerHTML = '';
+    if (reserveContainer) reserveContainer.innerHTML = '';
+    
+    await Promise.all([
+        loadAndDistributeESP1(),
+        loadAndDistributeESP2()
+    ]);
+}
+
+async function loadAndDistributeESP1() {
+    try {
+        const [metaResp, stateResp] = await Promise.all([
+            fetch('/api/device_meta/esp1'),
+            fetch('/api/device_state/esp1')
+        ]);
+        
+        if (!metaResp.ok || !stateResp.ok) return;
+        
+        const meta = (await metaResp.json()).body || (await metaResp.json());
+        const state = (await stateResp.json()).body || (await stateResp.json());
+        
+        if (meta && meta.names) {
+            for (let i = 0; i < meta.count; i++) {
+                const globalIdx = 1 + i; // ESP1 starts at 1
+                const name = meta.names[i] || `Relay ${i}`;
+                const val = state[`r${i}`] || 0;
+                const isOffline = !!metaData.offline || !!stateData.offline;
+                
+                const item = createRelayItem(globalIdx, name, val, isOffline);
+                
+                // Distribute based on Index
+                // Coal: 0, 1, 2, 3, 5 (Global 1, 2, 3, 4, 6)
+                // Gas: 4 (Global 5)
+                // Reserve: 6, 7 (Global 7, 8)
+                
+                if ([0, 1, 2, 3, 5].includes(i)) {
+                    document.getElementById('coal-controls')?.appendChild(item);
+                } else if (i === 4) {
+                    document.getElementById('gas-controls')?.appendChild(item);
+                } else {
+                    document.getElementById('reserve-controls')?.appendChild(item);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error loading ESP1:', e);
+    }
+}
+
+async function loadAndDistributeESP2() {
+    try {
+        const [metaResp, stateResp] = await Promise.all([
+            fetch('/api/device_meta/esp2'),
+            fetch('/api/device_state/esp2')
+        ]);
+        
+        if (!metaResp.ok || !stateResp.ok) return;
+        
+        const metaData = await metaResp.json();
+        const stateData = await stateResp.json();
+        
+        const meta = metaData.body || metaData;
+        const state = stateData.body || stateData;
+        
+        if (meta && meta.names) {
+            for (let i = 0; i < meta.count; i++) {
+                const globalIdx = 9 + i; // ESP2 starts at 9
+                const name = meta.names[i] || `Relay ${i}`;
+                const val = state[`r${i}`] || 0;
+                const isOffline = !!metaData.offline || !!stateData.offline;
+                
+                const item = createRelayItem(globalIdx, name, val, isOffline);
+                
+                // All ESP2 relays go to Reserve
+                document.getElementById('reserve-controls')?.appendChild(item);
+            }
+        }
+    } catch (e) {
+        console.error('Error loading ESP2:', e);
+    }
+}
+
+function createRelayItem(globalIndex, name, state, isOffline = false) {
+    const item = document.createElement('div');
+    item.className = 'relay-item';
+    if (isOffline) item.classList.add('offline');
+    
+    const info = document.createElement('div');
+    info.className = 'relay-info';
+    
+    const nameEl = document.createElement('div');
+    nameEl.className = 'relay-name';
+    nameEl.textContent = name;
+    
+    // Optional: Hide index for cleaner look, or keep small
+    // const indexEl = document.createElement('div');
+    // indexEl.className = 'relay-index';
+    // indexEl.textContent = `#${globalIndex}`;
+    
+    info.appendChild(nameEl);
+    // info.appendChild(indexEl);
+    
+    const toggle = document.createElement('label');
+    toggle.className = 'toggle-switch';
+    if (isOffline) toggle.classList.add('disabled');
+    
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = `relay-${globalIndex}`;
+    input.checked = (state === 1);
+    input.disabled = isOffline; // Disable input if offline
+    if (!isOffline) {
+        input.onchange = () => toggleRelay(globalIndex, input.checked ? 1 : 0, input);
+    }
+    
+    const slider = document.createElement('span');
+    slider.className = 'toggle-slider';
+    
+    toggle.appendChild(input);
+    toggle.appendChild(slider);
+    
+    item.appendChild(info);
+    item.appendChild(toggle);
+    
+    return item;
+}
+
+async function toggleRelay(globalIndex, val, inputElement) {
+    const requestKey = 'relay-' + globalIndex;
+    if (pendingRequests.has(requestKey)) {
+        inputElement.checked = !inputElement.checked;
+        return;
+    }
+    
+    inputElement.disabled = true;
+    pendingRequests.add(requestKey);
+    
+    try {
+        const response = await fetch('/api/relay/set', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({global_idx: globalIndex, val: val})
+        });
+        
+        if (!response.ok) throw new Error('Request failed');
+        
+        showNotification(`Schalten erfolgreich`, 'success');
+        
+        setTimeout(() => {
+            inputElement.disabled = false;
+        }, 200);
+    } catch (error) {
+        console.error('Relay toggle error:', error);
+        inputElement.checked = !inputElement.checked;
+        inputElement.disabled = false;
+        showNotification(`Fehler beim Schalten`, 'error');
+    } finally {
+        pendingRequests.delete(requestKey);
+    }
+}
+
+function toggleReserveSection() {
+    const container = document.getElementById('reserve-controls-container');
+    const icon = document.getElementById('reserve-toggle-icon');
+    
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        icon.textContent = '▲';
+    } else {
+        container.style.display = 'none';
+        icon.textContent = '▼';
+    }
+}
+
+// ============================================================================
+// WIND & TRAIN CONTROLS
+// ============================================================================
+
+function initWindTrainControls() {
+    refreshWindTrainStatus();
+}
+
+async function setWind(val) {
+    try {
+        const response = await fetch('/api/esp3/set_wind', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({val: val})
+        });
+        
+        if (!response.ok) throw new Error('Request failed');
+        
+        showNotification(`Wind ${val ? 'eingeschaltet' : 'ausgeschaltet'}`, 'success');
+        setTimeout(refreshWindTrainStatus, 200);
+    } catch (error) {
+        console.error('Wind control error:', error);
+        showNotification('Fehler bei Wind-Steuerung', 'error');
+    }
+}
+
+async function updateTrainPWM(value) {
+    const display = document.getElementById('pwm-display');
+    if (display) display.textContent = value;
+    
+    try {
+        await fetch('/api/esp3/set_pwm', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pwm: parseInt(value)})
+        });
+    } catch (error) {
+        console.error('Train PWM error:', error);
+    }
+}
+
+async function stopTrain() {
+    const slider = document.getElementById('train-slider');
+    const display = document.getElementById('pwm-display');
+    
+    try {
+        await fetch('/api/esp3/set_pwm', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pwm: 0})
+        });
+        
+        if (slider) slider.value = 0;
+        if (display) display.textContent = '0';
+        showNotification('Zug gestoppt', 'success');
+    } catch (error) {
+        console.error('Train stop error:', error);
+        showNotification('Fehler beim Stoppen', 'error');
+    }
+}
+
+// ============================================================================
+// STATUS UPDATES
+// ============================================================================
+
+async function refreshWindTrainStatus() {
+    try {
+        const response = await fetch('/api/esp3/state');
+        if (!response.ok) return;
+        
+        const data = await response.json();
+        const state = data.body || data;
+        
+        const windDisplay = document.getElementById('wind-display');
+        const windStatus = document.getElementById('wind-status');
+        const pwmDisplay = document.getElementById('pwm-display');
+        const trainPwm = document.getElementById('train-pwm');
+        const slider = document.getElementById('train-slider');
+        
+        if (state.running !== undefined) {
+            const windText = state.running ? 'AN' : 'AUS';
+            if (windDisplay) windDisplay.textContent = windText;
+            if (windStatus) windStatus.textContent = windText;
+        }
+        
+        if (state.pwm !== undefined) {
+            if (pwmDisplay) pwmDisplay.textContent = state.pwm;
+            if (trainPwm) trainPwm.textContent = state.pwm;
+            if (slider) slider.value = state.pwm;
+        }
+    } catch (error) {
+        console.error('Wind/Train status error:', error);
+    }
+}
+
+async function refreshTemperatures() {
+    // ESP1
+    try {
+        const response = await fetch('/api/device_state/esp1');
+        if (response.ok) {
+            const data = await response.json();
+            const state = data.body || data;
+            
+            const tempEl = document.getElementById('temp-esp1');
+            if (tempEl && state.temp !== undefined) {
+                tempEl.textContent = state.temp === null ? '--°C' : `${Number(state.temp).toFixed(1)}°C`;
+            }
+        }
+    } catch (error) {
+        console.error('ESP1 temp error:', error);
+    }
+    
+    // ESP2
+    try {
+        const response = await fetch('/api/device_state/esp2');
+        if (response.ok) {
+            const data = await response.json();
+            const state = data.body || data;
+            
+            const tempEl = document.getElementById('temp-esp2');
+            if (tempEl && state.temp !== undefined) {
+                tempEl.textContent = state.temp === null ? '--°C' : `${Number(state.temp).toFixed(1)}°C`;
+            }
+        }
+    } catch (error) {
+        console.error('ESP2 temp error:', error);
+    }
+}
+
+async function refreshAllStatus() {
+    await Promise.all([
+        refreshWindTrainStatus(),
+        refreshTemperatures()
+    ]);
+}
+
+function startStatusPolling() {
+    // Initial refresh
+    refreshAllStatus();
+    
+    // Poll every 5 seconds
+    setInterval(refreshAllStatus, 5000);
+}
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
 
 // ============================================================================
 // PERFORMANCE OPTIMIZATION
