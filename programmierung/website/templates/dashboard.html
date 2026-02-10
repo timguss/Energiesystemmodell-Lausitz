@@ -17,6 +17,44 @@
   <div class="card">
     <h2>Kontrolle & Anzeige</h2>
     <div class="small">Host: {{host}}</div>
+    <div style="margin-top: 10px; display: flex; align-items: center;">
+      <label class="switch" style="margin-left: 0; margin-right: 10px;">
+        <input type="checkbox" id="viewToggle" onchange="toggleViewMode()">
+        <span class="slider"></span>
+      </label>
+      <span>Auch Offline-Geräte anzeigen</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Verbindungsstatus</div>
+    <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap: 8px;">
+      <div id="status-host" class="status-indicator">Host</div>
+      <div id="status-esp1" class="status-indicator">ESP1</div>
+      <div id="status-esp2" class="status-indicator">ESP2</div>
+      <div id="status-esp3" class="status-indicator">ESP3</div>
+    </div>
+    <style>
+      .status-indicator {
+        padding: 8px;
+        border-radius: 4px;
+        background: #e0e0e0;
+        font-weight: bold;
+        color: #777;
+        text-align: center;
+        font-size: 0.9rem;
+      }
+
+      .status-indicator.online {
+        background: #4caf50;
+        color: white;
+      }
+
+      .status-indicator.offline {
+        background: #ef5350;
+        color: white;
+      }
+    </style>
   </div>
 
   <div class="card">
@@ -24,17 +62,17 @@
     <div id="scenarios">lade...</div>
   </div>
 
-  <div class="card">
+  <div class="card" id="card_esp1_relays">
     <div class="section-title">ESP1 — Relais</div>
     <div id="esp1_relays">lade...</div>
   </div>
 
-  <div class="card">
+  <div class="card" id="card_esp2_relays">
     <div class="section-title">ESP2 — Relais</div>
     <div id="esp2_relays">lade...</div>
   </div>
 
-  <div class="card">
+  <div class="card" id="card_esp3">
     <div class="section-title">ESP3 — Wind & Zug</div>
     <div>Wind: <strong id="windState">—</strong></div>
     <div style="margin-top:8px">
@@ -48,7 +86,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="card_temp">
     <div class="grid">
       <div>
         <div class="section-title">ESP1 — Temperatur</div>
@@ -63,7 +101,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="card_rs232">
     <div class="section-title">ESP1 — RS232</div>
     <div style="margin-top:8px">
       <div style="margin-bottom:12px">

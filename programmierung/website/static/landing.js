@@ -389,8 +389,31 @@ async function executeScenario(scenarioName, state, stateName, buttonElement) {
 // ============================================================================
 
 // ============================================================================
+// ============================================================================
 // SYSTEM CONTROLS (Coal, Gas, Reserve)
 // ============================================================================
+
+// CONFIGURATION: Map Relays to Power Stations
+// Change the target container ID to move a relay to a different station.
+// Available IDs: 'coal-controls', 'gas-controls', 'reserve-controls'
+const RELAY_MAPPING = {
+    esp1: {
+        0: 'gas-controls',    // Ventil - 1
+        1: 'gas-controls',    // Ventil - 2
+        2: 'gas-controls',    // Heizstab
+        3: 'gas-controls',    // Zünder
+        4: 'gas-controls',     // Gasventil
+        5: 'gas-controls',    // Kühler
+        6: 'gas-controls', // MFC - Reserve
+        7: 'reserve-controls'  // Unbelegt
+    },
+    esp2: {
+        0: 'coal-controls', // Reserve 1
+        1: 'coal-controls', // Reserve 2
+        2: 'reserve-controls', // Reserve 3
+        3: 'reserve-controls'  // Reserve 4
+    }
+};
 
 async function loadRelays() {
     // Clear containers
@@ -417,30 +440,24 @@ async function loadAndDistributeESP1() {
         
         if (!metaResp.ok || !stateResp.ok) return;
         
-        const meta = (await metaResp.json()).body || (await metaResp.json());
-        const state = (await stateResp.json()).body || (await stateResp.json());
+        const metaData = await metaResp.json();
+        const stateData = await stateResp.json();
+        
+        const meta = metaData.body || metaData;
+        const state = stateData.body || stateData;
+        const isOffline = !!metaData.offline || !!stateData.offline;
         
         if (meta && meta.names) {
             for (let i = 0; i < meta.count; i++) {
                 const globalIdx = 1 + i; // ESP1 starts at 1
                 const name = meta.names[i] || `Relay ${i}`;
                 const val = state[`r${i}`] || 0;
-                const isOffline = !!metaData.offline || !!stateData.offline;
                 
                 const item = createRelayItem(globalIdx, name, val, isOffline);
                 
-                // Distribute based on Index
-                // Coal: 0, 1, 2, 3, 5 (Global 1, 2, 3, 4, 6)
-                // Gas: 4 (Global 5)
-                // Reserve: 6, 7 (Global 7, 8)
-                
-                if ([0, 1, 2, 3, 5].includes(i)) {
-                    document.getElementById('coal-controls')?.appendChild(item);
-                } else if (i === 4) {
-                    document.getElementById('gas-controls')?.appendChild(item);
-                } else {
-                    document.getElementById('reserve-controls')?.appendChild(item);
-                }
+                // Use Mapping
+                const targetId = RELAY_MAPPING.esp1[i] || 'reserve-controls';
+                document.getElementById(targetId)?.appendChild(item);
             }
         }
     } catch (e) {
@@ -462,18 +479,19 @@ async function loadAndDistributeESP2() {
         
         const meta = metaData.body || metaData;
         const state = stateData.body || stateData;
+        const isOffline = !!metaData.offline || !!stateData.offline;
         
         if (meta && meta.names) {
             for (let i = 0; i < meta.count; i++) {
                 const globalIdx = 9 + i; // ESP2 starts at 9
                 const name = meta.names[i] || `Relay ${i}`;
                 const val = state[`r${i}`] || 0;
-                const isOffline = !!metaData.offline || !!stateData.offline;
                 
                 const item = createRelayItem(globalIdx, name, val, isOffline);
                 
-                // All ESP2 relays go to Reserve
-                document.getElementById('reserve-controls')?.appendChild(item);
+                // Use Mapping
+                const targetId = RELAY_MAPPING.esp2[i] || 'reserve-controls';
+                document.getElementById(targetId)?.appendChild(item);
             }
         }
     } catch (e) {
@@ -509,7 +527,7 @@ function createRelayItem(globalIndex, name, state, isOffline = false) {
     input.type = 'checkbox';
     input.id = `relay-${globalIndex}`;
     input.checked = (state === 1);
-    input.disabled = isOffline; // Disable input if offline
+    input.disabled = isOffline; // Disable
     if (!isOffline) {
         input.onchange = () => toggleRelay(globalIndex, input.checked ? 1 : 0, input);
     }

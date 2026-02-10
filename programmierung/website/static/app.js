@@ -3,6 +3,53 @@
 let metaCache = {}; // Cache für Meta-Daten
 let pendingRequests = new Set(); // Verhindert doppelte Requests
 
+// View Control
+let showAllDevices = false;
+let deviceStatus = {
+    host: false,
+    esp1: false, 
+    esp2: false, 
+    esp3: false
+};
+
+function toggleViewMode() {
+    const toggle = document.getElementById('viewToggle');
+    showAllDevices = toggle.checked;
+    updateVisibility();
+}
+
+function updateVisibility() {
+    const cards = {
+        'esp1': ['card_esp1_relays', 'card_rs232'],
+        'esp2': ['card_esp2_relays'],
+        'esp3': ['card_esp3']
+        // Temp card serves both, keep visible if any is online or showAll? 
+        // For simplicity: unique temp cards or just keep always visible for now, or hide if both offline.
+    };
+    
+    // Helper to set display
+    const setDisplay = (id, show) => {
+        const el = document.getElementById(id);
+        if(el) el.style.display = show ? 'block' : 'none';
+    };
+
+    // ESP1
+    const showEsp1 = showAllDevices || deviceStatus.esp1;
+    cards.esp1.forEach(id => setDisplay(id, showEsp1));
+    
+    // ESP2
+    const showEsp2 = showAllDevices || deviceStatus.esp2;
+    cards.esp2.forEach(id => setDisplay(id, showEsp2));
+    
+    // ESP3
+    const showEsp3 = showAllDevices || deviceStatus.esp3;
+    cards.esp3.forEach(id => setDisplay(id, showEsp3));
+    
+    // Special case for Temp (mixed)
+    const showTemp = showAllDevices || deviceStatus.esp1 || deviceStatus.esp2;
+    setDisplay('card_temp', showTemp);
+}
+
 async function fetchMeta(device) {
   if (metaCache[device]) return metaCache[device]; // Aus Cache
   if (pendingRequests.has("meta-" + device)) return null; // Request läuft bereits
@@ -33,12 +80,48 @@ async function fetchState(device) {
     if (!r.ok) throw r;
     let j = await r.json(); 
     if (j.error) throw j.error;
-    return j.body || j;
+    
+    // Check if device is marked as offline by backend
+    let isOffline = !!j.offline;
+    updateStatusDisplay(device, !isOffline);
+    
+    let body = j.body || j;
+    if (isOffline) body.offline = true; // Inject flag
+    return body;
   } catch (e) { 
     console.error('state err', device, e); 
+    updateStatusDisplay(device, false);
     return null; 
   } finally {
     pendingRequests.delete('state-' + device);
+  }
+}
+
+function updateStatusDisplay(device, isOnline) {
+  if (deviceStatus[device] !== isOnline) {
+      deviceStatus[device] = isOnline;
+      // Also update visibility when status changes
+      updateVisibility();
+  }
+
+  const el = document.getElementById('status-' + device);
+  if (el) {
+    el.className = 'status-indicator ' + (isOnline ? 'online' : 'offline');
+    el.title = isOnline ? 'Verbunden' : 'Nicht erreichbar';
+  }
+}
+
+async function checkHostStatus() {
+  try {
+    let r = await fetch('/api/debug/host');
+    if (r.ok) {
+        let j = await r.json();
+        updateStatusDisplay('host', j.host_reachable);
+    } else {
+        updateStatusDisplay('host', false);
+    }
+  } catch (e) {
+    updateStatusDisplay('host', false);
   }
 }
 
@@ -274,12 +357,21 @@ async function refreshEsp3() {
     let r = await fetch('/api/esp3/state'); 
     if (!r.ok) throw r;
     let j = await r.json();
+    
+    let isOffline = !!j.offline;
+    updateStatusDisplay('esp3', !isOffline);
+    
     let body = j.body || j;
     document.getElementById('windState').textContent = body.running ? 'AN' : 'AUS';
     document.getElementById('pwmVal').textContent = body.pwm;
-    document.getElementById('pwmSlider').value = body.pwm;
+    // Update slider only if not dragging? For now just update.
+    const slider = document.getElementById('pwmSlider');
+    if (slider && document.activeElement !== slider) {
+        slider.value = body.pwm;
+    }
   } catch (e) {
     console.error('esp3 err', e);
+    updateStatusDisplay('esp3', false);
   }
 }
 
@@ -405,6 +497,7 @@ async function refreshTemps() {
 // Optimiertes Polling: nur States, nicht Meta
 async function refreshAll() {
   await Promise.all([
+    checkHostStatus(),
     refreshDeviceState('esp1'),
     refreshDeviceState('esp2'),
     refreshEsp3(),
@@ -419,6 +512,7 @@ async function refreshAll() {
 // Initial: Meta laden und Relays bauen
 buildRelays();
 loadScenarios();
+updateVisibility(); // Initial visibility check
 
 // Danach nur noch States updaten (alle 3 Sekunden)
 setInterval(refreshAll, 3000);

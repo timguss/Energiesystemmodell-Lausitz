@@ -1155,3 +1155,22 @@ body {
         text-align: center;
     }
 }
+
+/* Offline / Disabled State */
+.relay-item.offline .relay-info {
+    opacity: 0.6;
+}
+
+.relay-item.offline .relay-name::after {
+    content: " (Offline)";
+    font-size: 0.8em;
+    color: var(--text-muted);
+    margin-left: 6px;
+    font-style: italic;
+}
+
+.toggle-switch.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    filter: grayscale(100%);
+}

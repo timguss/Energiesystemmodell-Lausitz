@@ -12,6 +12,7 @@ import time
 
 HOST = "http://192.168.4.1"   # Host-ESP
 HTTP_TIMEOUT = 3  # Timeout in Sekunden
+USE_MOCK_DATA = False # Set to False for real hardware connection
 
 # Mapping global relay index -> (device, device_idx)
 GLOBAL_MAP = {
@@ -113,8 +114,11 @@ def host_forward(target, method, path, body_str="", timeout=HTTP_TIMEOUT):
         if isinstance(resp, dict):
             code = resp.get("code", -1)
             body = resp.get("body", "")
-            print(f"[DEBUG] Extracted - code: {code}, body type: {type(body)}")
-            print(f"[DEBUG] Body content: {repr(body)}")
+            
+            # Helper: Wenn wir 404/500/Error vom Host bekommen, werfen wir Fehler
+            # damit der Caller den Fallback nutzen kann
+            if code != 200:
+                print(f"[WARNING] Forward returned non-200 code: {code}")
             
             # Wenn body ein String ist, versuche ihn als JSON zu parsen
             if isinstance(body, str):
@@ -127,20 +131,14 @@ def host_forward(target, method, path, body_str="", timeout=HTTP_TIMEOUT):
                         print(f"[DEBUG] Body is not valid JSON ({e}), returning as string")
                         return {"code": code, "body": body}
                 else:
-                    print(f"[DEBUG] Body is empty string")
                     return {"code": code, "body": ""}
             else:
-                # Body ist bereits ein Objekt
-                print(f"[DEBUG] Body is already an object")
                 return {"code": code, "body": body}
         
-        print(f"[WARNING] Response is not dict: {resp}")
         return {"code": -1, "body": str(resp)}
     except Exception as e:
         print(f"[ERROR] Forward exception: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return {"code": -1, "body": f"Error: {str(e)}"}
+        raise e # Re-raise to trigger fallback in caller
 
 # ============================================================================
 # FLASK APP
@@ -197,8 +195,16 @@ def api_clients():
 @app.route("/api/device_meta/<device>")
 def api_device_meta(device):
     print(f"\n[INFO] === Request: /api/device_meta/{device} ===")
+    
+    # HARDCODED FALLBACKS (wenn ESP offline)
+    fallback_meta = {}
+    if device == "esp1":
+        fallback_meta = {"count": 8, "names": ["Ventil - 1", "Ventil - 2", "Heizstab", "Zünder", "Gasventil", "Kühler", "MFC - Reserve", "Unbelegt"]}
+    elif device == "esp2":
+        fallback_meta = {"count": 4, "names": ["Reserve 1", "Reserve 2", "Reserve 3", "Reserve 4"]}
+    
     try:
-        # Cache für 60 Sekunden
+        # Cache check
         now = time.time()
         if device in meta_cache and (now - meta_cache_time.get(device, 0)) < 60:
             print(f"[INFO] Returning cached meta for {device}")
@@ -211,24 +217,39 @@ def api_device_meta(device):
             print(f"[SUCCESS] Got meta for {device}: {res}")
             meta_cache[device] = res
             meta_cache_time[device] = now
+            return jsonify(res)
         else:
-            print(f"[WARNING] Non-200 response for {device}: {res}")
-        
-        return jsonify(res)
+            raise Exception("Device unavailable / Non-200 code")
+
     except Exception as e:
-        print(f"[ERROR] /api/device_meta/{device}: {str(e)}")
-        return jsonify({"error": str(e)}), 502
+        print(f"[ERROR] /api/device_meta/{device} failed: {str(e)}. Using Fallback.")
+        # Return fallback meta so UI can build valid structure
+        return jsonify({"code": 200, "body": fallback_meta, "offline": True})
 
 @app.route("/api/device_state/<device>")
 def api_device_state(device):
     print(f"[INFO] Request: /api/device_state/{device}")
+    
+    # HARDCODED FALLBACKS (Empty/Offline State)
+    fallback_state = {}
+    if device == "esp1":
+        fallback_state = {"r0":0,"r1":0,"r2":0,"r3":0,"r4":0,"r5":0,"r6":0,"r7":0,"temp":None,"rntc":None}
+    elif device == "esp2":
+        fallback_state = {"r0":0,"r1":0,"r2":0,"r3":0,"temp":None,"rntc":None}
+    elif device == "esp3":
+        fallback_state = {"running":False, "pwm":0}
+        
     try:
         res = host_forward(device, "GET", "/state", timeout=2)
-        print(f"[INFO] State response for {device}: {res}")
-        return jsonify(res)
+        if res.get("code") == 200:
+            print(f"[INFO] State response for {device}: {res}")
+            return jsonify(res)
+        else:
+            raise Exception("Device unavailable")
+            
     except Exception as e:
-        print(f"[ERROR] /api/device_state/{device}: {str(e)}")
-        return jsonify({"error": str(e)}), 502
+        print(f"[ERROR] /api/device_state/{device} failed: {str(e)}. Using Fallback.")
+        return jsonify({"code": 200, "body": fallback_state, "offline": True})
 
 @app.route("/api/relay/set", methods=["POST"])
 def api_relay_set():
