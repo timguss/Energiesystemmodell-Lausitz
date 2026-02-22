@@ -19,6 +19,7 @@ GLOBAL_MAP = {
     1: ("esp1", 0),  2: ("esp1", 1),  3: ("esp1", 2),  4: ("esp1", 3),
     5: ("esp1", 4),  6: ("esp1", 5),  7: ("esp1", 6),  8: ("esp1", 7),
     9: ("esp2", 0), 10: ("esp2", 1), 11: ("esp2", 2), 12: ("esp2", 3),
+    13: ("esp4", 0), 14: ("esp4", 1), 15: ("esp4", 2), 16: ("esp4", 3),
 }
 
 # ============================================================================
@@ -202,6 +203,12 @@ def api_device_meta(device):
         fallback_meta = {"count": 8, "names": ["Ventil - 1", "Ventil - 2", "Heizstab", "Zünder", "Gasventil", "Kühler", "MFC - Reserve", "Unbelegt"]}
     elif device == "esp2":
         fallback_meta = {"count": 4, "names": ["Reserve 1", "Reserve 2", "Reserve 3", "Reserve 4"]}
+    elif device == "esp4":
+        fallback_meta = {
+            "relayCount": 4,
+            "sensorCount": 5
+        }
+    
     
     try:
         # Cache check
@@ -238,6 +245,17 @@ def api_device_state(device):
         fallback_state = {"r0":0,"r1":0,"r2":0,"r3":0,"temp":None,"rntc":None}
     elif device == "esp3":
         fallback_state = {"running":False, "pwm":0}
+    elif device == "esp4":
+        fallback_state = {
+            "relays": [0,0,0,0],
+            "sensors": [
+                {"current":0,"pressure":0},
+                {"current":0,"pressure":0},
+                {"current":0,"pressure":0},
+                {"current":0,"pressure":0},
+                {"current":0,"pressure":0},
+            ]
+        }
         
     try:
         res = host_forward(device, "GET", "/state", timeout=2)
@@ -331,10 +349,14 @@ def api_rs232():
 @app.route("/api/esp3/state")
 def api_esp3_state():
     try:
-        return jsonify(host_forward("esp3", "GET", "/state", timeout=2))
+        res = host_forward("esp3", "GET", "/state", timeout=2)
+        if res.get("code") == 200:
+            return jsonify(res)
+        else:
+            raise Exception("ESP3 unavailable")
     except Exception as e:
-        print(f"[ERROR] /api/esp3/state: {str(e)}")
-        return jsonify({"error": str(e)}), 502
+        print(f"[ERROR] /api/esp3/state: {str(e)}. Using Fallback.")
+        return jsonify({"code": 200, "body": {"running": False, "pwm": 0}, "offline": True})
 
 @app.route("/api/esp3/set_wind", methods=["POST"])
 def api_esp3_set_wind():

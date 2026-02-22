@@ -33,6 +33,7 @@
       <div id="status-esp1" class="status-indicator">ESP1</div>
       <div id="status-esp2" class="status-indicator">ESP2</div>
       <div id="status-esp3" class="status-indicator">ESP3</div>
+      <div id="status-esp4" class="status-indicator">ESP4</div>
     </div>
     <style>
       .status-indicator {
@@ -83,6 +84,41 @@
       <label>Zug PWM: <span id="pwmVal">0</span></label>
       <input id="pwmSlider" type="range" min="0" max="255" value="0" oninput="setPwm(this.value)">
       <button onclick="stopTrain()">Stop</button>
+    </div>
+  </div>
+  <div class="card" id="card_esp4_relays">
+  <h3>ESP4 Relais</h3>
+  <div id="esp4_relays"></div>
+</div>
+
+  <div class="card" id="card_esp4_sensors">
+    <div class="section-title">ESP4 — Drucksensoren</div>
+    <div class="grid" style="grid-template-columns: repeat(5, 1fr); gap: 8px; text-align:center;">
+      <div>
+        <div class="small">Sensor 1</div>
+        <div><strong id="esp4_p0">--</strong> bar</div>
+        <div class="small"><span id="esp4_i0">--</span> mA</div>
+      </div>
+      <div>
+        <div class="small">Sensor 2</div>
+        <div><strong id="esp4_p1">--</strong> bar</div>
+        <div class="small"><span id="esp4_i1">--</span> mA</div>
+      </div>
+      <div>
+        <div class="small">Sensor 3</div>
+        <div><strong id="esp4_p2">--</strong> bar</div>
+        <div class="small"><span id="esp4_i2">--</span> mA</div>
+      </div>
+      <div>
+        <div class="small">Sensor 4</div>
+        <div><strong id="esp4_p3">--</strong> bar</div>
+        <div class="small"><span id="esp4_i3">--</span> mA</div>
+      </div>
+      <div>
+        <div class="small">Sensor 5</div>
+        <div><strong id="esp4_p4">--</strong> bar</div>
+        <div class="small"><span id="esp4_i4">--</span> mA</div>
+      </div>
     </div>
   </div>
 
