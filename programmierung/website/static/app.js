@@ -2,6 +2,15 @@
 
 let metaCache = {}; // Cache für Meta-Daten
 let pendingRequests = new Set(); // Verhindert doppelte Requests
+const FETCH_TIMEOUT = 5000; // 5 Sekunden Frontend-Timeout
+
+// Fetch with timeout to prevent hanging requests
+function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(id));
+}
 
 // View Control
 let showAllDevices = false;
@@ -63,7 +72,7 @@ async function fetchMeta(device) {
 
   pendingRequests.add("meta-" + device);
   try {
-    let r = await fetch("/api/device_meta/" + device);
+    let r = await fetchWithTimeout("/api/device_meta/" + device);
     if (!r.ok) throw r;
     let j = await r.json();
     if (j.error) throw j.error;
@@ -71,7 +80,7 @@ async function fetchMeta(device) {
     metaCache[device] = body; // Cachen
     return body;
   } catch (e) {
-    console.error("meta err", device, e);
+    if (e.name !== 'AbortError') console.error("meta err", device, e);
     return null;
   } finally {
     pendingRequests.delete("meta-" + device);
@@ -83,7 +92,7 @@ async function fetchState(device) {
 
   pendingRequests.add('state-' + device);
   try {
-    let r = await fetch('/api/device_state/' + device);
+    let r = await fetchWithTimeout('/api/device_state/' + device);
     if (!r.ok) throw r;
     let j = await r.json();
     if (j.error) throw j.error;
@@ -96,7 +105,7 @@ async function fetchState(device) {
     if (isOffline) body.offline = true; // Inject flag
     return body;
   } catch (e) {
-    console.error('state err', device, e);
+    if (e.name !== 'AbortError') console.error('state err', device, e);
     updateStatusDisplay(device, false);
     return null;
   } finally {
@@ -120,7 +129,7 @@ function updateStatusDisplay(device, isOnline) {
 
 async function checkHostStatus() {
   try {
-    let r = await fetch('/api/debug/host');
+    let r = await fetchWithTimeout('/api/debug/host');
     if (r.ok) {
       let j = await r.json();
       updateStatusDisplay('host', j.host_reachable);
@@ -224,7 +233,7 @@ async function toggleRelay(global_idx, val, inputElement) {
   pendingRequests.add(requestKey);
 
   try {
-    let r = await fetch('/api/relay/set', {
+    let r = await fetchWithTimeout('/api/relay/set', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ global_idx, val })
@@ -250,32 +259,11 @@ async function toggleRelay(global_idx, val, inputElement) {
   }
 }
 
-// Nur einen Device-State neu laden
+// Nur einen Device-State neu laden (für toggleRelay / Szenarien)
 async function refreshDeviceState(device) {
   const state = await fetchState(device);
   if (!state) return;
-
-  const meta = metaCache[device];
-  if (!meta) return;
-
-  // Update nur die Checkboxen
-  let startIdx;
-  if (device === 'esp1') startIdx = 1;
-  else if (device === 'esp2') startIdx = 9;
-  else startIdx = 13; // esp4
-
-  const count = meta.count || meta.relayCount || 0;
-  for (let i = 0; i < count; i++) {
-    const globalIdx = startIdx + i;
-    const checkbox = document.getElementById('g' + globalIdx);
-    if (checkbox) {
-      // esp4 uses state.relays[i], others use state['r'+i]
-      const newState = device === 'esp4'
-        ? (state.relays ? state.relays[i] === 1 : false)
-        : state['r' + i] === 1;
-      if (checkbox.checked !== newState) checkbox.checked = newState;
-    }
-  }
+  refreshRelayCheckboxes(device, state);
 }
 
 // ============================================================================
@@ -387,7 +375,7 @@ async function executeScenario(scenarioName, state, stateName, buttonElement) {
 
 async function refreshEsp3() {
   try {
-    let r = await fetch('/api/esp3/state');
+    let r = await fetchWithTimeout('/api/esp3/state');
     if (!r.ok) throw r;
     let j = await r.json();
 
@@ -485,47 +473,23 @@ async function sendRs() {
 // TEMPERATUR
 // ============================================================================
 
-async function refreshTemps() {
-  // ESP1 Temperatur
-  try {
-    let r = await fetch('/api/device_state/esp1');
-    if (!r.ok) return;
-    let j = await r.json();
-    let body = j.body || j;
-    if (body.temp !== undefined) {
-      document.getElementById('temp1').textContent =
-        (body.temp === null ? '--' : Number(body.temp).toFixed(2));
-    }
-    if (body.rntc !== undefined) {
-      document.getElementById('rntc1').textContent =
-        (body.rntc === null ? '--' : Number(body.rntc).toFixed(0));
-    }
-  } catch (e) {
-    console.error('esp1 temp err', e);
+// Update temp display from already-fetched state (no extra HTTP request)
+function updateTemps(device, state) {
+  if (!state) return;
+  const suffix = device === 'esp1' ? '1' : '2';
+  if (state.temp !== undefined) {
+    const el = document.getElementById('temp' + suffix);
+    if (el) el.textContent = (state.temp === null ? '--' : Number(state.temp).toFixed(2));
   }
-
-  // ESP2 Temperatur
-  try {
-    let r = await fetch('/api/device_state/esp2');
-    if (!r.ok) return;
-    let j = await r.json();
-    let body = j.body || j;
-    if (body.temp !== undefined) {
-      document.getElementById('temp2').textContent =
-        (body.temp === null ? '--' : Number(body.temp).toFixed(2));
-    }
-    if (body.rntc !== undefined) {
-      document.getElementById('rntc2').textContent =
-        (body.rntc === null ? '--' : Number(body.rntc).toFixed(0));
-    }
-  } catch (e) {
-    console.error('esp2 temp err', e);
+  if (state.rntc !== undefined) {
+    const el = document.getElementById('rntc' + suffix);
+    if (el) el.textContent = (state.rntc === null ? '--' : Number(state.rntc).toFixed(0));
   }
 }
-async function refreshEsp4Sensors() {
-  const state = await fetchState('esp4');
-  if (!state || !state.sensors) return;
 
+// Update ESP4 sensors from already-fetched state (no extra HTTP request)
+function updateEsp4Sensors(state) {
+  if (!state || !state.sensors) return;
   state.sensors.forEach((sensor, i) => {
     const pEl = document.getElementById('esp4_p' + i);
     const iEl = document.getElementById('esp4_i' + i);
@@ -538,17 +502,73 @@ async function refreshEsp4Sensors() {
 // POLLING
 // ============================================================================
 
-// Optimiertes Polling: nur States, nicht Meta
+// Each device is fetched ONCE per cycle. Results are reused for relays, temps, sensors.
+// Promise.allSettled ensures one slow device doesn't block others.
 async function refreshAll() {
-  await Promise.all([
-    checkHostStatus(),
-    refreshDeviceState('esp1'),
-    refreshDeviceState('esp2'),
-    refreshEsp3(),
-    refreshDeviceState('esp4'),
-    refreshTemps(),
-    refreshEsp4Sensors(),
-  ]);
+  // Fetch all device states independently, each can fail without blocking others
+  const [hostResult, esp1Result, esp2Result, esp3Result, esp4Result] =
+    await Promise.allSettled([
+      checkHostStatus(),
+      fetchState('esp1'),
+      fetchState('esp2'),
+      refreshEsp3(),
+      fetchState('esp4'),
+    ]);
+
+  // ESP1: update relays + temperature from single fetch
+  const state1 = esp1Result.status === 'fulfilled' ? esp1Result.value : null;
+  if (state1) {
+    refreshRelayCheckboxes('esp1', state1);
+    updateTemps('esp1', state1);
+  }
+
+  // ESP2: update relays + temperature from single fetch
+  const state2 = esp2Result.status === 'fulfilled' ? esp2Result.value : null;
+  if (state2) {
+    refreshRelayCheckboxes('esp2', state2);
+    updateTemps('esp2', state2);
+  }
+
+  // ESP4: update relays + sensors from single fetch
+  const state4 = esp4Result.status === 'fulfilled' ? esp4Result.value : null;
+  if (state4) {
+    refreshRelayCheckboxes('esp4', state4);
+    updateEsp4Sensors(state4);
+  }
+}
+
+// Update relay checkboxes from already-fetched state data
+function refreshRelayCheckboxes(device, state) {
+  const meta = metaCache[device];
+  if (!meta || !state) return;
+
+  let startIdx;
+  if (device === 'esp1') startIdx = 1;
+  else if (device === 'esp2') startIdx = 9;
+  else startIdx = 13; // esp4
+
+  const count = meta.count || meta.relayCount || 0;
+  for (let i = 0; i < count; i++) {
+    const globalIdx = startIdx + i;
+    const checkbox = document.getElementById('g' + globalIdx);
+    if (checkbox) {
+      const newState = device === 'esp4'
+        ? (state.relays ? state.relays[i] === 1 : false)
+        : state['r' + i] === 1;
+      if (checkbox.checked !== newState) checkbox.checked = newState;
+    }
+  }
+}
+
+// setTimeout-based polling prevents overlapping cycles
+const POLL_INTERVAL = 3000;
+async function pollLoop() {
+  try {
+    await refreshAll();
+  } catch (e) {
+    console.error('Poll error:', e);
+  }
+  setTimeout(pollLoop, POLL_INTERVAL);
 }
 
 // ============================================================================
@@ -560,5 +580,5 @@ buildRelays();
 loadScenarios();
 updateVisibility(); // Initial visibility check
 
-// Danach nur noch States updaten (alle 3 Sekunden)
-setInterval(refreshAll, 3000);
+// Start non-overlapping poll loop
+setTimeout(pollLoop, POLL_INTERVAL);

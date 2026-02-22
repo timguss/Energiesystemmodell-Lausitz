@@ -14,7 +14,7 @@ const char* WIFI_PASS = "espHostPass";
 
 // -------------------- SENSOR KONFIG --------------------
 // 5x 4–20mA Sensoren
-const int SENSOR_PINS[5] = {35, 34, 33, 32, 39};   // nur ADC Pins!
+const int SENSOR_PINS[5] = {34,35, 32, 33, 25};   // nur ADC Pins!
 const float SHUNT_RESISTOR = 165.0;
 
 // Gemeinsamer Nullpunkt
@@ -166,25 +166,15 @@ void printStatus() {
 }
 
 // -------------------- HOST REG --------------------
-void registerAtHost(){
-  if(WiFi.status()!=WL_CONNECTED) return;
+void registerWithHost() {
+  if (WiFi.status() != WL_CONNECTED) return;
 
   HTTPClient http;
   http.begin("http://192.168.4.1/register");
-  http.addHeader("Content-Type","application/json");
-
-  String payload = "{\"name\":\"esp4\",\"ip\":\""+WiFi.localIP().toString()+"\"}";
-  http.POST(payload);
-  http.end();
-}
-
-void registerWithHost() {
-
-  HTTPClient http;
-  http.begin("http://192.168.4.1/register");  // Host-IP
   http.addHeader("Content-Type", "application/json");
+  http.setTimeout(2000); // Short timeout so we don't block web server
 
-  String payload = "{\"name\":\"esp4\"}";
+  String payload = "{\"name\":\"esp4\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
   int httpCode = http.POST(payload);
 
   if (httpCode == 200) {
@@ -217,13 +207,23 @@ void setup(){
   }
 
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);  // Auto-reconnect on WiFi drop
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  while(WiFi.status()!=WL_CONNECTED){
+  Serial.print("Connecting to WiFi");
+  unsigned long wifiStart = millis();
+  while(WiFi.status()!=WL_CONNECTED && millis() - wifiStart < 10000){
     delay(500);
+    Serial.print(".");
   }
+  Serial.println();
 
-  registerAtHost();
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("WiFi connected: " + WiFi.localIP().toString());
+    registerWithHost();
+  } else {
+    Serial.println("WiFi connection timeout, will retry...");
+  }
 
   server.on("/state", HTTP_GET, handleState);
   server.on("/set", HTTP_GET, handleSet);
@@ -234,17 +234,30 @@ void setup(){
 
 // -------------------- LOOP --------------------
 unsigned long lastPrint = 0;
-
 unsigned long lastCheck = 0;
+
 void loop() {
   server.handleClient();
 
-  if (millis() - lastPrint > 2000) {  // alle 2 Sekunden
+  unsigned long now = millis();
+
+  // Print status every 10 seconds (reduced from 2s to lower serial load)
+  if (now - lastPrint > 3000) {
     printStatus();
-    lastPrint = millis();
-  };
-  if (millis() - lastCheck > 5000) {
-    registerWithHost();
-    lastCheck = millis();
+    lastPrint = now;
+  }
+
+  // Re-register with host every 15 seconds (reduced from 5s)
+  if (now - lastCheck > 7500) {
+    // Also check WiFi and reconnect if needed
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("WiFi disconnected, reconnecting...");
+      WiFi.disconnect();
+      WiFi.begin(WIFI_SSID, WIFI_PASS);
+      delay(1000);
+    } else {
+      registerWithHost();
+    }
+    lastCheck = now;
   }
 }
