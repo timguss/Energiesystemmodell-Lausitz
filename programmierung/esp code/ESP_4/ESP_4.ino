@@ -13,8 +13,8 @@ const char* WIFI_SSID = "ESP-HOST";
 const char* WIFI_PASS = "espHostPass";
 
 // -------------------- SENSOR KONFIG --------------------
-// 5x 4–20mA Sensoren
-const int SENSOR_PINS[5] = {34,35, 32, 33, 25};   // nur ADC Pins!
+// 5x 4–20mA Sensoren 
+const int SENSOR_PINS[5] = {36,39,34,35, 32};   // nur ADC Pins!
 const float SHUNT_RESISTOR = 165.0;
 
 // Gemeinsamer Nullpunkt
@@ -150,9 +150,9 @@ void printStatus() {
     Serial.print("Sensor ");
     Serial.print(i + 1);
     Serial.print(": ");
-    Serial.print(currents[i], 2);
+    Serial.print(currentValues[i], 2);   // <-- currentValues statt currents
     Serial.print(" mA | ");
-    Serial.print(pressures[i], 2);
+    Serial.print(pressureValues[i], 2);  // <-- pressureValues statt pressures
     Serial.println(" bar");
   }
 
@@ -242,7 +242,8 @@ void loop() {
   unsigned long now = millis();
 
   // Print status every 10 seconds (reduced from 2s to lower serial load)
-  if (now - lastPrint > 3000) {
+  if (now - lastPrint > 500) {
+    readSensors();   
     printStatus();
     lastPrint = now;
   }
