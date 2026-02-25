@@ -2,7 +2,7 @@
 
 let metaCache = {}; // Cache für Meta-Daten
 let pendingRequests = new Set(); // Verhindert doppelte Requests
-const FETCH_TIMEOUT = 5000; // 5 Sekunden Frontend-Timeout
+const FETCH_TIMEOUT = 12000; // 12 Sekunden Frontend-Timeout
 
 // Fetch with timeout to prevent hanging requests
 function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {

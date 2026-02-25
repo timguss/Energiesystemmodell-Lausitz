@@ -11,8 +11,23 @@ import time
 # ============================================================================
 
 HOST = "http://192.168.4.1"   # Host-ESP
-HTTP_TIMEOUT = 3  # Timeout in Sekunden
+HTTP_TIMEOUT = 10  # Timeout in Sekunden
 USE_MOCK_DATA = False # Set to False for real hardware connection
+VERBOSE = False # Set to True for detailed debug logging
+
+# Status tracking to reduce terminal spam
+OFFLINE_DEVICES = set()
+
+def report_status(device, is_online, error_msg=None):
+    """Prints status only when it changes"""
+    if is_online:
+        if device in OFFLINE_DEVICES:
+            print(f"[ONLINE] {device} is back online")
+            OFFLINE_DEVICES.remove(device)
+    else:
+        if device not in OFFLINE_DEVICES:
+            print(f"[OFFLINE] {device} is missing/unreachable: {error_msg}")
+            OFFLINE_DEVICES.add(device)
 
 # Mapping global relay index -> (device, device_idx)
 GLOBAL_MAP = {
@@ -59,22 +74,23 @@ def host_get(path, timeout=HTTP_TIMEOUT):
     """GET request to Host-ESP"""
     try:
         url = HOST + path
-        print(f"[DEBUG] GET {url}")
+        if VERBOSE: print(f"[DEBUG] GET {url}")
         r = requests.get(url, timeout=timeout)
-        print(f"[DEBUG] Response status: {r.status_code}")
+        if VERBOSE: print(f"[DEBUG] Response status: {r.status_code}")
         r.raise_for_status()
+        report_status("host", True)
         try:
             result = r.json()
-            print(f"[DEBUG] Response JSON: {result}")
+            if VERBOSE: print(f"[DEBUG] Response JSON: {result}")
             return result
         except:
-            print(f"[DEBUG] Response TEXT: {r.text}")
+            if VERBOSE: print(f"[DEBUG] Response TEXT: {r.text}")
             return r.text
     except requests.exceptions.Timeout:
-        print(f"[ERROR] Timeout beim Verbinden zu {HOST}")
+        report_status("host", False, "Timeout")
         raise Exception("Timeout: Host antwortet nicht")
     except requests.exceptions.RequestException as e:
-        print(f"[ERROR] Request Exception: {str(e)}")
+        report_status("host", False, str(e))
         raise Exception(f"Verbindungsfehler: {str(e)}")
 
 def host_post(path, data=None, timeout=HTTP_TIMEOUT):
@@ -82,54 +98,52 @@ def host_post(path, data=None, timeout=HTTP_TIMEOUT):
     try:
         url = HOST + path
         headers = {"Content-Type": "application/json"}
-        print(f"[DEBUG] POST {url}")
-        print(f"[DEBUG] Data: {data}")
+        if VERBOSE: print(f"[DEBUG] POST {url}")
+        if VERBOSE: print(f"[DEBUG] Data: {data}")
         r = requests.post(url, data=data, headers=headers, timeout=timeout)
-        print(f"[DEBUG] Response status: {r.status_code}")
+        if VERBOSE: print(f"[DEBUG] Response status: {r.status_code}")
         r.raise_for_status()
+        report_status("host", True)
         try:
             result = r.json()
-            print(f"[DEBUG] Response JSON: {result}")
+            if VERBOSE: print(f"[DEBUG] Response JSON: {result}")
             return result
         except:
-            print(f"[DEBUG] Response TEXT: {r.text}")
+            if VERBOSE: print(f"[DEBUG] Response TEXT: {r.text}")
             return r.text
     except requests.exceptions.Timeout:
-        print(f"[ERROR] Timeout beim Verbinden zu {HOST}")
+        report_status("host", False, "Timeout (POST)")
         raise Exception("Timeout: Host antwortet nicht")
     except requests.exceptions.RequestException as e:
-        print(f"[ERROR] Request Exception: {str(e)}")
+        report_status("host", False, f"Request Error (POST): {str(e)}")
         raise Exception(f"Verbindungsfehler: {str(e)}")
 
 def host_forward(target, method, path, body_str="", timeout=HTTP_TIMEOUT):
     """Forward request through Host-ESP to target device"""
-    print(f"[DEBUG] Forward to {target}: {method} {path}")
+    if VERBOSE: print(f"[DEBUG] Forward to {target}: {method} {path}")
     payload = {"target": target, "method": method, "path": path, "body": body_str}
     
     try:
         resp = host_post("/forward", json.dumps(payload), timeout=timeout)
-        print(f"[DEBUG] Forward response RAW: {repr(resp)}")
-        print(f"[DEBUG] Forward response type: {type(resp)}")
+        if VERBOSE: print(f"[DEBUG] Forward response RAW: {repr(resp)}")
         
         # resp expected {"code":int, "body":"..."} where body may be a JSON string
         if isinstance(resp, dict):
             code = resp.get("code", -1)
             body = resp.get("body", "")
             
-            # Helper: Wenn wir 404/500/Error vom Host bekommen, werfen wir Fehler
-            # damit der Caller den Fallback nutzen kann
             if code != 200:
-                print(f"[WARNING] Forward returned non-200 code: {code}")
+                if VERBOSE: print(f"[WARNING] Forward to {target} returned non-200 code: {code}")
             
             # Wenn body ein String ist, versuche ihn als JSON zu parsen
             if isinstance(body, str):
                 if body.strip():  # Nur parsen wenn nicht leer
                     try:
                         parsed = json.loads(body)
-                        print(f"[DEBUG] Body parsed as JSON: {parsed}")
+                        if VERBOSE: print(f"[DEBUG] Body parsed as JSON: {parsed}")
                         return {"code": code, "body": parsed}
                     except json.JSONDecodeError as e:
-                        print(f"[DEBUG] Body is not valid JSON ({e}), returning as string")
+                        if VERBOSE: print(f"[DEBUG] Body is not valid JSON ({e}), returning as string")
                         return {"code": code, "body": body}
                 else:
                     return {"code": code, "body": ""}
@@ -138,7 +152,7 @@ def host_forward(target, method, path, body_str="", timeout=HTTP_TIMEOUT):
         
         return {"code": -1, "body": str(resp)}
     except Exception as e:
-        print(f"[ERROR] Forward exception: {str(e)}")
+        # We don't log here because the caller (api route) handles it with report_status
         raise e # Re-raise to trigger fallback in caller
 
 # ============================================================================
@@ -195,7 +209,7 @@ def api_clients():
 
 @app.route("/api/device_meta/<device>")
 def api_device_meta(device):
-    print(f"\n[INFO] === Request: /api/device_meta/{device} ===")
+    if VERBOSE: print(f"\n[INFO] === Request: /api/device_meta/{device} ===")
     
     # HARDCODED FALLBACKS (wenn ESP offline)
     fallback_meta = {}
@@ -209,33 +223,30 @@ def api_device_meta(device):
             "sensorCount": 5
         }
     
-    
     try:
         # Cache check
         now = time.time()
         if device in meta_cache and (now - meta_cache_time.get(device, 0)) < 60:
-            print(f"[INFO] Returning cached meta for {device}")
             return jsonify(meta_cache[device])
         
-        print(f"[INFO] Fetching fresh meta for {device}")
-        res = host_forward(device, "GET", "/meta", timeout=2)
+        if VERBOSE: print(f"[INFO] Fetching fresh meta for {device}")
+        res = host_forward(device, "GET", "/meta", timeout=10)
         
         if res.get("code") == 200:
-            print(f"[SUCCESS] Got meta for {device}: {res}")
+            report_status(device, True)
             meta_cache[device] = res
             meta_cache_time[device] = now
             return jsonify(res)
         else:
-            raise Exception("Device unavailable / Non-200 code")
+            raise Exception(f"Device returned code {res.get('code')}")
 
     except Exception as e:
-        print(f"[ERROR] /api/device_meta/{device} failed: {str(e)}. Using Fallback.")
-        # Return fallback meta so UI can build valid structure
+        report_status(device, False, str(e))
         return jsonify({"code": 200, "body": fallback_meta, "offline": True})
 
 @app.route("/api/device_state/<device>")
 def api_device_state(device):
-    print(f"[INFO] Request: /api/device_state/{device}")
+    if VERBOSE: print(f"[INFO] Request: /api/device_state/{device}")
     
     # HARDCODED FALLBACKS (Empty/Offline State)
     fallback_state = {}
@@ -258,15 +269,16 @@ def api_device_state(device):
         }
         
     try:
-        res = host_forward(device, "GET", "/state", timeout=2)
+        res = host_forward(device, "GET", "/state", timeout=10)
         if res.get("code") == 200:
-            print(f"[INFO] State response for {device}: {res}")
+            report_status(device, True)
+            if VERBOSE: print(f"[INFO] State response for {device}: {res}")
             return jsonify(res)
         else:
-            raise Exception("Device unavailable")
+            raise Exception(f"Device returned code {res.get('code')}")
             
     except Exception as e:
-        print(f"[ERROR] /api/device_state/{device} failed: {str(e)}. Using Fallback.")
+        report_status(device, False, str(e))
         return jsonify({"code": 200, "body": fallback_state, "offline": True})
 
 @app.route("/api/relay/set", methods=["POST"])
@@ -280,7 +292,7 @@ def api_relay_set():
     path = f"/set?idx={idx}&val={val}"
     print(f"[INFO] Relay set: global={gi}, device={device}, idx={idx}, val={val}")
     try:
-        return jsonify(host_forward(device, "GET", path, timeout=2))
+        return jsonify(host_forward(device, "GET", path, timeout=10))
     except Exception as e:
         print(f"[ERROR] /api/relay/set: {str(e)}")
         return jsonify({"error": str(e)}), 502
@@ -349,13 +361,14 @@ def api_rs232():
 @app.route("/api/esp3/state")
 def api_esp3_state():
     try:
-        res = host_forward("esp3", "GET", "/state", timeout=2)
+        res = host_forward("esp3", "GET", "/state", timeout=10)
         if res.get("code") == 200:
+            report_status("esp3", True)
             return jsonify(res)
         else:
-            raise Exception("ESP3 unavailable")
+            raise Exception(f"ESP3 returned code {res.get('code')}")
     except Exception as e:
-        print(f"[ERROR] /api/esp3/state: {str(e)}. Using Fallback.")
+        report_status("esp3", False, str(e))
         return jsonify({"code": 200, "body": {"running": False, "pwm": 0}, "offline": True})
 
 @app.route("/api/esp3/set_wind", methods=["POST"])
@@ -363,7 +376,7 @@ def api_esp3_set_wind():
     j = request.get_json(force=True)
     val = 1 if int(j.get("val", 0)) else 0
     try:
-        return jsonify(host_forward("esp3", "GET", f"/set?val={val}", timeout=2))
+        return jsonify(host_forward("esp3", "GET", f"/set?val={val}", timeout=10))
     except Exception as e:
         print(f"[ERROR] /api/esp3/set_wind: {str(e)}")
         return jsonify({"error": str(e)}), 502
@@ -374,7 +387,7 @@ def api_esp3_set_pwm():
     pwm = int(j.get("pwm", 0))
     pwm = max(0, min(255, pwm))
     try:
-        return jsonify(host_forward("esp3", "GET", f"/train?pwm={pwm}", timeout=2))
+        return jsonify(host_forward("esp3", "GET", f"/train?pwm={pwm}", timeout=10))
     except Exception as e:
         print(f"[ERROR] /api/esp3/set_pwm: {str(e)}")
         return jsonify({"error": str(e)}), 502

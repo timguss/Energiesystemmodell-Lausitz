@@ -241,21 +241,19 @@ void loop() {
 
   unsigned long now = millis();
 
-  // Print status every 10 seconds (reduced from 2s to lower serial load)
-  if (now - lastPrint > 500) {
+  // Print status every 2 seconds (reduced frequency to lower load)
+  if (now - lastPrint > 2000) {
     readSensors();   
     printStatus();
     lastPrint = now;
   }
 
-  // Re-register with host every 15 seconds (reduced from 5s)
-  if (now - lastCheck > 7500) {
-    // Also check WiFi and reconnect if needed
+  // Re-register with host every 15 seconds
+  if (now - lastCheck > 15000) {
     if (WiFi.status() != WL_CONNECTED) {
       Serial.println("WiFi disconnected, reconnecting...");
-      WiFi.disconnect();
+      // Non-blocking reconnect attempt
       WiFi.begin(WIFI_SSID, WIFI_PASS);
-      delay(1000);
     } else {
       registerWithHost();
     }
