@@ -35,6 +35,7 @@ GLOBAL_MAP = {
     5: ("esp1", 4),  6: ("esp1", 5),  7: ("esp1", 6),  8: ("esp1", 7),
     9: ("esp2", 0), 10: ("esp2", 1), 11: ("esp2", 2), 12: ("esp2", 3),
     13: ("esp4", 0), 14: ("esp4", 1), 15: ("esp4", 2), 16: ("esp4", 3), 17: ("esp4", 4),
+    18: ("esp3", 0), 19: ("esp3", 1), 20: ("esp3", 2), 21: ("esp3", 3),
 }
 
 # ============================================================================
@@ -187,7 +188,7 @@ def api_debug_host():
     }
     
     try:
-        clients = host_get("/clients", timeout=2)
+        clients = host_get("/clients", timeout=5)
         result["host_reachable"] = True
         result["clients"] = clients
     except Exception as e:
@@ -202,7 +203,7 @@ def api_debug_host():
 @app.route("/api/clients")
 def api_clients():
     try:
-        return jsonify(host_get("/clients", timeout=2))
+        return jsonify(host_get("/clients", timeout=5))
     except Exception as e:
         print(f"[ERROR] /api/clients: {str(e)}")
         return jsonify({"error": str(e)}), 502
@@ -217,10 +218,12 @@ def api_device_meta(device):
         fallback_meta = {"count": 8, "names": ["Ventil - 1", "Ventil - 2", "Heizstab", "Zünder", "Gasventil", "Kühler", "MFC - Reserve", "Unbelegt"]}
     elif device == "esp2":
         fallback_meta = {"count": 4, "names": ["Reserve 1", "Reserve 2", "Reserve 3", "Reserve 4"]}
+    elif device == "esp3":
+        fallback_meta = {"count": 4, "names": ["Relais 2", "Relais 3", "Relais 4", "Relais 5"]}
     elif device == "esp4":
         fallback_meta = {
-            "relayCount": 5,
-            "sensorCount": 5
+            "count": 5,
+            "names": ["Relay 1", "Relay 2", "Relay 3", "Relay 4", "Relay 5"]
         }
     
     try:
@@ -255,7 +258,7 @@ def api_device_state(device):
     elif device == "esp2":
         fallback_state = {"r0":0,"r1":0,"r2":0,"r3":0,"temp":None,"rntc":None}
     elif device == "esp3":
-        fallback_state = {"running":False, "pwm":0}
+        fallback_state = {"running": False, "pwm": 0, "relays": [0, 0, 0, 0]}
     elif device == "esp4":
         fallback_state = {
             "relays": [0,0,0,0,0],
@@ -265,7 +268,8 @@ def api_device_state(device):
                 {"current":0,"pressure":0},
                 {"current":0,"pressure":0},
                 {"current":0,"pressure":0},
-            ]
+            ],
+            "flow": 0
         }
         
     try:
@@ -386,8 +390,10 @@ def api_esp3_set_pwm():
     j = request.get_json(force=True)
     pwm = int(j.get("pwm", 0))
     pwm = max(0, min(255, pwm))
+    direction = int(j.get("dir", 1)) # Default to Forward (1)
+
     try:
-        return jsonify(host_forward("esp3", "GET", f"/train?pwm={pwm}", timeout=10))
+        return jsonify(host_forward("esp3", "GET", f"/train?pwm={pwm}&dir={direction}", timeout=10))
     except Exception as e:
         print(f"[ERROR] /api/esp3/set_pwm: {str(e)}")
         return jsonify({"error": str(e)}), 502

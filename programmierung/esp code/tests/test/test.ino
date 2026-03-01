@@ -1,32 +1,50 @@
-// ESP32 – 4 Relais zyklisch schalten
+// ================== KONFIGURATION ==================
+#define FLOW_PIN 17              // Blaues Kabel
+#define MEASURE_INTERVAL 1000    // Messfenster in ms
+float K_FACTOR = 1.0;            // Platzhalter! Wird später kalibriert
+                                 // Einheit: Pulse pro Liter
 
-const bool ACTIVE_LOW = true;
+// ================== VARIABLEN ======================
+volatile uint32_t pulseCount = 0;
 
-// GPIO-Pins der Relais (anpassen!)
-const uint8_t RELAY_PINS[4] = {32, 33, 25,12};
-
-// Zeiten (ms)
-const unsigned long ON_TIME  = 1000; // Ventil EIN
-const unsigned long OFF_TIME = 500;  // Pause zwischen Ventilen
-
-inline uint8_t relayOn()  { return ACTIVE_LOW ? LOW  : HIGH; }
-inline uint8_t relayOff() { return ACTIVE_LOW ? HIGH : LOW; }
-
-void setup() {
-  for (uint8_t i = 0; i < 4; i++) {
-    pinMode(RELAY_PINS[i], OUTPUT);
-    digitalWrite(RELAY_PINS[i], relayOff());
-  }
+// ================== INTERRUPT ======================
+void IRAM_ATTR onPulse() {
+  pulseCount++;
 }
 
-void loop() {
-  for (uint8_t i = 0; i < 4; i++) {
-    // EIN
-    digitalWrite(RELAY_PINS[i], relayOn());
-    delay(ON_TIME);
+// ================== SETUP ==========================
+void setup() {
+  Serial.begin(115200);
 
-    // AUS
-    digitalWrite(RELAY_PINS[i], relayOff());
-    delay(OFF_TIME);
+  pinMode(FLOW_PIN, INPUT_PULLUP);   // interner Pull-Up
+  attachInterrupt(digitalPinToInterrupt(FLOW_PIN),
+                  onPulse,
+                  FALLING);          // NPN → LOW-Puls
+
+  Serial.println("Flowmeter gestartet");
+}
+
+// ================== LOOP ===========================
+void loop() {
+  static uint32_t lastMillis = 0;
+
+  if (millis() - lastMillis >= MEASURE_INTERVAL) {
+    lastMillis = millis();
+
+    // Pulse atomar übernehmen
+    noInterrupts();
+    uint32_t pulses = pulseCount;
+    pulseCount = 0;
+    interrupts();
+
+    // Berechnung
+    float pulsesPerSecond = pulses / (MEASURE_INTERVAL / 1000.0);
+    float flow_L_per_min  = (pulsesPerSecond * 60.0) / K_FACTOR;
+
+    // Ausgabe
+    Serial.print("Pulse/s: ");
+    Serial.print(pulsesPerSecond);
+    Serial.print(" | Durchfluss [L/min]: ");
+    Serial.println(flow_L_per_min, 4);
   }
 }

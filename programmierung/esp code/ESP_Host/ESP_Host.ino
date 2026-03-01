@@ -110,7 +110,7 @@ String forwardRequest(String target, String method, String path, String body) {
   Serial.println("[Forward] " + method + " " + url);
   
   http.begin(url);
-  http.setTimeout(5000);
+  http.setTimeout(2000);
   
   int httpCode = -1;
   String payload = "";
@@ -455,6 +455,7 @@ void setup() {
   // WiFi Access Point starten
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASSWORD);
+  WiFi.setSleep(false); // Verhindert Latenz-Spitzen und verbessert Erreichbarkeit
   
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");

@@ -83,13 +83,24 @@
     <div style="margin-top:12px">
       <label>Zug PWM: <span id="pwmVal">0</span></label>
       <input id="pwmSlider" type="range" min="0" max="255" value="0" oninput="setPwm(this.value)">
-      <button onclick="stopTrain()">Stop</button>
+      <div style="display: inline-flex; align-items: center; margin-left: 10px;">
+        <label class="switch" style="transform: scale(0.8);">
+          <input type="checkbox" id="trainDir" onchange="setPwm(document.getElementById('pwmSlider').value)">
+          <span class="slider"></span>
+        </label>
+        <span class="small" style="margin-left: 5px;">Rückwärts</span>
+      </div>
+      <button onclick="stopTrain()" style="margin-left: 10px;">Stop</button>
+    </div>
+    <div style="margin-top:12px">
+      <div class="small">Relais</div>
+      <div id="esp3_relays"></div>
     </div>
   </div>
   <div class="card" id="card_esp4_relays">
-  <h3>ESP4 Relais</h3>
-  <div id="esp4_relays"></div>
-</div>
+    <h3>ESP4 Relais</h3>
+    <div id="esp4_relays"></div>
+  </div>
 
   <div class="card" id="card_esp4_sensors">
     <div class="section-title">ESP4 — Drucksensoren</div>
@@ -119,6 +130,10 @@
         <div><strong id="esp4_p4">--</strong> bar</div>
         <div class="small"><span id="esp4_i4">--</span> mA</div>
       </div>
+    </div>
+    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #eee; text-align: center;">
+      <div class="small">Durchflussmesser (Flow)</div>
+      <div style="font-size: 1.4rem;"><strong id="esp4_flow">--</strong> <span class="small">L/min</span></div>
     </div>
   </div>
 

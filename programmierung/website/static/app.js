@@ -77,7 +77,7 @@ async function fetchMeta(device) {
     let j = await r.json();
     if (j.error) throw j.error;
     let body = j.body || j;
-    metaCache[device] = body; // Cachen
+    if (!j.offline) metaCache[device] = body; // Nur echte Daten cachen
     return body;
   } catch (e) {
     if (e.name !== 'AbortError') console.error("meta err", device, e);
@@ -169,54 +169,58 @@ function mkRelayRow(global_idx, name, state) {
   return row;
 }
 
+async function initDeviceRelays(device, existingState = null) {
+  const containerId = (device === 'esp3') ? 'esp3_relays' : device + '_relays';
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  // Wenn bereits Relais da sind, nichts tun (außer Refresh via Checkboxen später)
+  if (container.querySelector('.relay-row')) return;
+
+  const state = existingState || await fetchState(device);
+  const meta = await fetchMeta(device);
+
+  if (!meta || !state || state.offline) {
+    if (container.innerHTML === '' || container.innerHTML === 'lade...') {
+      container.innerHTML = '<div class="error">Warte auf Verbindung...</div>';
+    }
+    return;
+  }
+
+  container.innerHTML = '';
+
+  let startIdx;
+  if (device === 'esp1') startIdx = 1;
+  else if (device === 'esp2') startIdx = 9;
+  else if (device === 'esp4') startIdx = 13;
+  else startIdx = 18;
+
+  const count = meta.count || meta.relayCount || 0;
+  const names = meta.names || [];
+
+  for (let i = 0; i < count; i++) {
+    const name = names[i] || ('Relay ' + (i + 1));
+    const globalIdx = startIdx + i;
+
+    let st = 0;
+    if (device === 'esp4' || device === 'esp3') {
+      st = (state.relays && state.relays[i] !== undefined) ? state.relays[i] : 0;
+    } else {
+      st = (state['r' + i] !== undefined) ? state['r' + i] : 0;
+    }
+
+    container.appendChild(mkRelayRow(globalIdx, name, st));
+  }
+}
+
 async function buildRelays() {
-  // esp1
-  const meta1 = await fetchMeta('esp1');
-  const state1 = await fetchState('esp1');
-  const container1 = document.getElementById('esp1_relays');
-  container1.innerHTML = '';
-
-  if (meta1 && meta1.names && state1) {
-    for (let i = 0; i < meta1.count; i++) {
-      const name = meta1.names[i] || ('Relay ' + (i + 1));
-      const st = (state1['r' + i] !== undefined) ? state1['r' + i] : 0;
-      container1.appendChild(mkRelayRow(i + 1, name, st));
-    }
-  } else {
-    container1.innerHTML = '<div class="error">keine daten</div>';
-  }
-
-  // esp2
-  const meta2 = await fetchMeta('esp2');
-  const state2 = await fetchState('esp2');
-  const container2 = document.getElementById('esp2_relays');
-  container2.innerHTML = '';
-
-  if (meta2 && meta2.names && state2) {
-    for (let i = 0; i < meta2.count; i++) {
-      const name = meta2.names[i] || ('Relay ' + (i + 1));
-      const global_idx = 9 + i;
-      const st = (state2['r' + i] !== undefined) ? state2['r' + i] : 0;
-      container2.appendChild(mkRelayRow(global_idx, name, st));
-    }
-  } else {
-    container2.innerHTML = '<div class="error">keine daten</div>';
-  }
-
-  //esp4
-  const meta4 = await fetchMeta('esp4');
-  const state4 = await fetchState('esp4');
-  const container4 = document.getElementById('esp4_relays');
-  container4.innerHTML = '';
-
-  if (meta4 && meta4.names && state4) {
-    for (let i = 0; i < meta4.count; i++) {
-      const name = meta4.names[i] || ('Relay ' + (i + 1));
-      const global_idx = 13 + i;
-      const st = state4.relays ? state4.relays[i] : 0;
-      container4.appendChild(mkRelayRow(global_idx, name, st));
-    }
-  }
+  // Versuche alle Geräte parallel zu initialisieren
+  await Promise.all([
+    initDeviceRelays('esp1'),
+    initDeviceRelays('esp2'),
+    initDeviceRelays('esp3'),
+    initDeviceRelays('esp4')
+  ]);
 }
 
 async function toggleRelay(global_idx, val, inputElement) {
@@ -247,7 +251,8 @@ async function toggleRelay(global_idx, val, inputElement) {
       let device;
       if (global_idx <= 8) device = 'esp1';
       else if (global_idx <= 12) device = 'esp2';
-      else device = 'esp4';
+      else if (global_idx <= 17) device = 'esp4';
+      else device = 'esp3';
       await refreshDeviceState(device);
     }, 100);
   } catch (e) {
@@ -264,6 +269,7 @@ async function refreshDeviceState(device) {
   const state = await fetchState(device);
   if (!state) return;
   refreshRelayCheckboxes(device, state);
+  if (device === 'esp3') updateEsp3LegacyUI(state);
 }
 
 // ============================================================================
@@ -373,26 +379,24 @@ async function executeScenario(scenarioName, state, stateName, buttonElement) {
 // ESP3
 // ============================================================================
 
-async function refreshEsp3() {
-  try {
-    let r = await fetchWithTimeout('/api/esp3/state');
-    if (!r.ok) throw r;
-    let j = await r.json();
 
-    let isOffline = !!j.offline;
-    updateStatusDisplay('esp3', !isOffline);
 
-    let body = j.body || j;
-    document.getElementById('windState').textContent = body.running ? 'AN' : 'AUS';
-    document.getElementById('pwmVal').textContent = body.pwm;
-    // Update slider only if not dragging? For now just update.
-    const slider = document.getElementById('pwmSlider');
-    if (slider && document.activeElement !== slider) {
-      slider.value = body.pwm;
-    }
-  } catch (e) {
-    console.error('esp3 err', e);
-    updateStatusDisplay('esp3', false);
+function updateEsp3LegacyUI(state3) {
+  if (!state3) return;
+  const elWind = document.getElementById('windState');
+  if (elWind) elWind.textContent = state3.running ? 'AN' : 'AUS';
+
+  const elPwm = document.getElementById('pwmVal');
+  if (elPwm) elPwm.textContent = state3.pwm;
+
+  const slider = document.getElementById('pwmSlider');
+  if (slider && document.activeElement !== slider) {
+    slider.value = state3.pwm;
+  }
+  const dirBox = document.getElementById('trainDir');
+  if (dirBox) {
+    // If state3.forward is true, 'Rückwärts' checkbox should be UNCHECKED
+    dirBox.checked = !state3.forward;
   }
 }
 
@@ -402,15 +406,21 @@ async function setWind(val) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ val })
   });
-  setTimeout(refreshEsp3, 100);
+  setTimeout(() => refreshDeviceState('esp3'), 100);
 }
 
 async function setPwm(v) {
+  const isBackward = document.getElementById('trainDir').checked;
+  const pwm = parseInt(v);
   document.getElementById('pwmVal').textContent = v;
+
   await fetch('/api/esp3/set_pwm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pwm: parseInt(v) })
+    body: JSON.stringify({
+      pwm: pwm,
+      dir: isBackward ? 0 : 1 // 1=Forward, 0=Backward
+    })
   });
 }
 
@@ -489,13 +499,19 @@ function updateTemps(device, state) {
 
 // Update ESP4 sensors from already-fetched state (no extra HTTP request)
 function updateEsp4Sensors(state) {
-  if (!state || !state.sensors) return;
-  state.sensors.forEach((sensor, i) => {
-    const pEl = document.getElementById('esp4_p' + i);
-    const iEl = document.getElementById('esp4_i' + i);
-    if (pEl) pEl.textContent = Number(sensor.pressure).toFixed(2);
-    if (iEl) iEl.textContent = Number(sensor.current).toFixed(2);
-  });
+  if (!state) return;
+  if (state.sensors) {
+    state.sensors.forEach((sensor, i) => {
+      const pEl = document.getElementById('esp4_p' + i);
+      const iEl = document.getElementById('esp4_i' + i);
+      if (pEl) pEl.textContent = Number(sensor.pressure).toFixed(2);
+      if (iEl) iEl.textContent = Number(sensor.current).toFixed(2);
+    });
+  }
+  if (state.flow !== undefined) {
+    const fEl = document.getElementById('esp4_flow');
+    if (fEl) fEl.textContent = Number(state.flow).toFixed(2);
+  }
 }
 
 // ============================================================================
@@ -505,35 +521,41 @@ function updateEsp4Sensors(state) {
 // Each device is fetched ONCE per cycle. Results are reused for relays, temps, sensors.
 // Promise.allSettled ensures one slow device doesn't block others.
 async function refreshAll() {
-  // Fetch all device states independently, each can fail without blocking others
-  const [hostResult, esp1Result, esp2Result, esp3Result, esp4Result] =
-    await Promise.allSettled([
-      checkHostStatus(),
-      fetchState('esp1'),
-      fetchState('esp2'),
-      refreshEsp3(),
-      fetchState('esp4'),
-    ]);
+  // Sequential fetching to avoid overloading the single-threaded Host-ESP
+  // Each request gets its own "time slice" instead of competing for the Host's attention
 
-  // ESP1: update relays + temperature from single fetch
-  const state1 = esp1Result.status === 'fulfilled' ? esp1Result.value : null;
+  await checkHostStatus();
+
+  // ESP1
+  const state1 = await fetchState('esp1');
   if (state1) {
+    await initDeviceRelays('esp1', state1);
     refreshRelayCheckboxes('esp1', state1);
     updateTemps('esp1', state1);
   }
 
-  // ESP2: update relays + temperature from single fetch
-  const state2 = esp2Result.status === 'fulfilled' ? esp2Result.value : null;
+  // ESP2
+  const state2 = await fetchState('esp2');
   if (state2) {
+    await initDeviceRelays('esp2', state2);
     refreshRelayCheckboxes('esp2', state2);
     updateTemps('esp2', state2);
   }
 
-  // ESP4: update relays + sensors from single fetch
-  const state4 = esp4Result.status === 'fulfilled' ? esp4Result.value : null;
+  // ESP4
+  const state4 = await fetchState('esp4');
   if (state4) {
+    await initDeviceRelays('esp4', state4);
     refreshRelayCheckboxes('esp4', state4);
     updateEsp4Sensors(state4);
+  }
+
+  // ESP3
+  const state3 = await fetchState('esp3');
+  if (state3) {
+    await initDeviceRelays('esp3', state3);
+    refreshRelayCheckboxes('esp3', state3);
+    updateEsp3LegacyUI(state3);
   }
 }
 
@@ -545,14 +567,15 @@ function refreshRelayCheckboxes(device, state) {
   let startIdx;
   if (device === 'esp1') startIdx = 1;
   else if (device === 'esp2') startIdx = 9;
-  else startIdx = 13; // esp4
+  else if (device === 'esp4') startIdx = 13;
+  else startIdx = 18; // esp3
 
   const count = meta.count || meta.relayCount || 0;
   for (let i = 0; i < count; i++) {
     const globalIdx = startIdx + i;
     const checkbox = document.getElementById('g' + globalIdx);
     if (checkbox) {
-      const newState = device === 'esp4'
+      const newState = (device === 'esp4' || device === 'esp3')
         ? (state.relays ? state.relays[i] === 1 : false)
         : state['r' + i] === 1;
       if (checkbox.checked !== newState) checkbox.checked = newState;

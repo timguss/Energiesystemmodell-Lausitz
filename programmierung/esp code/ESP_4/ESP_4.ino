@@ -31,6 +31,17 @@ bool hostConnected = false;
 const char* WIFI_SSID = "ESP-HOST";
 const char* WIFI_PASS = "espHostPass";
 
+// -------------------- FLOWMETER KONFIG --------------------
+#define FLOW_PIN 17
+float K_FACTOR = 1.0; // Kalibrierung: Pulse pro Liter
+volatile uint32_t pulseCount = 0;
+float flow_L_per_min = 0;
+unsigned long lastFlowMillis = 0;
+
+void IRAM_ATTR onPulse() {
+  pulseCount++;
+}
+
 // -------------------- SENSOR KONFIG --------------------
 // 5x 4–20mA Sensoren 
 const int SENSOR_PINS[5] = {36,39,34,35, 32};   // nur ADC Pins!
@@ -68,21 +79,31 @@ inline int logicalToPhys(int logical, bool activeLow){
 
 // -------------------- SENSOR LESEN --------------------
 void readSensors() {
-
+  // 1. Druck/Strom Sensoren
   for(int i=0;i<5;i++){
-
     int rawADC = analogRead(SENSOR_PINS[i]);
     float voltage = (rawADC / 4095.0) * 3.3;
     float current_mA = (voltage / SHUNT_RESISTOR) * 1000.0;
-
-    float pressure_bar =
-      ((current_mA - I_ZERO) / (I_FULL - I_ZERO)) * PRESSURE_MAX[i];
-
+    float pressure_bar = ((current_mA - I_ZERO) / (I_FULL - I_ZERO)) * PRESSURE_MAX[i];
     if (pressure_bar < 0) pressure_bar = 0;
     if (pressure_bar > PRESSURE_MAX[i]) pressure_bar = PRESSURE_MAX[i];
-
     currentValues[i] = current_mA;
     pressureValues[i] = pressure_bar;
+  }
+
+  // 2. Flowmeter (alle 1s berechnen)
+  unsigned long now = millis();
+  if (now - lastFlowMillis >= 1000) {
+    uint32_t duration = now - lastFlowMillis;
+    lastFlowMillis = now;
+    
+    noInterrupts();
+    uint32_t pulses = pulseCount;
+    pulseCount = 0;
+    interrupts();
+
+    float pulsesPerSecond = pulses / (duration / 1000.0);
+    flow_L_per_min = (pulsesPerSecond * 60.0) / K_FACTOR;
   }
 }
 
@@ -111,6 +132,9 @@ void handleState(){
     if(i<RELAY_COUNT-1) s+=",";
   }
   s += "]";
+
+  // Flowmeter
+  s += ",\"flow\":" + String(flow_L_per_min, 2);
 
   s+="}";
 
@@ -168,6 +192,10 @@ void printStatus() {
     if (i < RELAY_COUNT - 1) Serial.print(",");
   }
   Serial.println("]");
+
+  Serial.print("Flow: ");
+  Serial.print(flow_L_per_min, 2);
+  Serial.println(" L/min");
   Serial.println("-------------------");
 }
 
@@ -205,6 +233,10 @@ void setup(){
 
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
+
+  // Flowmeter init
+  pinMode(FLOW_PIN, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(FLOW_PIN), onPulse, FALLING);
 
   // Relais init
   for(int i=0;i<RELAY_COUNT;i++){
