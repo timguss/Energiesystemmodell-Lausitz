@@ -3,9 +3,28 @@
 #include <WebServer.h>
 #include <HTTPClient.h>
 
+// -------------------- RELAIS --------------------
+const bool ACTIVE_LOW = true;
+
+struct RelayConfig {
+  uint8_t pin;
+  const char* name;
+  bool activeLow;
+};
+
+const uint8_t RELAY_COUNT = 5;
+
+RelayConfig RELAYS[RELAY_COUNT] = {
+  {18, "Relay 1", false}, // First relay reversed (High Trigger)
+  {19, "Relay 2", true},  // Others stay Active Low
+  {21, "Relay 3", true},
+  {22, "Relay 4", true},
+  {23, "Relay 5", true},
+};
+
 float currents[5];
 float pressures[5];
-int relayState[4];
+int relayState[RELAY_COUNT];
 bool hostConnected = false;
 
 // -------------------- WIFI --------------------
@@ -30,22 +49,6 @@ const float PRESSURE_MAX[5] = {
   10.0
 };
 
-// -------------------- RELAIS --------------------
-const bool ACTIVE_LOW = true;
-
-struct RelayConfig {
-  uint8_t pin;
-  const char* name;
-};
-
-const uint8_t RELAY_COUNT = 4;
-
-RelayConfig RELAYS[RELAY_COUNT] = {
-  {19, "Relay 1"}, 
-  {21, "Relay 2"},
-  {22, "Relay 3"},
-  {23, "Relay 4"}
-};
 
 // -------------------- SERVER --------------------
 WebServer server(80);
@@ -55,12 +58,12 @@ float currentValues[5];
 
 // ------------------------------------------------
 
-inline int physToLogical(int physVal){
-  return ACTIVE_LOW ? (physVal==LOW?1:0) : (physVal==HIGH?1:0);
+inline int physToLogical(int physVal, bool activeLow){
+  return activeLow ? (physVal==LOW?1:0) : (physVal==HIGH?1:0);
 }
 
-inline int logicalToPhys(int logical){
-  return ACTIVE_LOW ? (logical==1?LOW:HIGH) : (logical==1?HIGH:LOW);
+inline int logicalToPhys(int logical, bool activeLow){
+  return activeLow ? (logical==1?LOW:HIGH) : (logical==1?HIGH:LOW);
 }
 
 // -------------------- SENSOR LESEN --------------------
@@ -104,7 +107,7 @@ void handleState(){
   // Relais
   s += "\"relays\":[";
   for(int i=0;i<RELAY_COUNT;i++){
-    s += String(physToLogical(digitalRead(RELAYS[i].pin)));
+    s += String(physToLogical(digitalRead(RELAYS[i].pin), RELAYS[i].activeLow));
     if(i<RELAY_COUNT-1) s+=",";
   }
   s += "]";
@@ -130,15 +133,18 @@ void handleSet(){
     return;
   }
 
-  digitalWrite(RELAYS[idx].pin, logicalToPhys(val));
+  digitalWrite(RELAYS[idx].pin, logicalToPhys(val, RELAYS[idx].activeLow));
   relayState[idx] = val;
   server.send(200,"application/json","{\"ok\":true,\"idx\":" + String(idx) + ",\"val\":" + String(val) + "}");
 }
 
 // -------------------- META --------------------
 void handleMeta(){
-  String s = "{\"count\":4,\"names\":[";
-  s += "\"Relay 1\",\"Relay 2\",\"Relay 3\",\"Relay 4\"";
+  String s = "{\"count\":" + String(RELAY_COUNT) + ",\"names\":[";
+  for(int i=0; i<RELAY_COUNT; i++){
+    s += "\"" + String(RELAYS[i].name) + "\"";
+    if(i < RELAY_COUNT - 1) s += ",";
+  }
   s += "]}";
   server.send(200,"application/json", s);
 }
@@ -157,9 +163,9 @@ void printStatus() {
   }
 
   Serial.print("Relais: [");
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < RELAY_COUNT; i++) {
     Serial.print(relayState[i]);
-    if (i < 3) Serial.print(",");
+    if (i < RELAY_COUNT - 1) Serial.print(",");
   }
   Serial.println("]");
   Serial.println("-------------------");
@@ -203,7 +209,7 @@ void setup(){
   // Relais init
   for(int i=0;i<RELAY_COUNT;i++){
     pinMode(RELAYS[i].pin, OUTPUT);
-    digitalWrite(RELAYS[i].pin, logicalToPhys(0));
+    digitalWrite(RELAYS[i].pin, logicalToPhys(0, RELAYS[i].activeLow));
   }
 
   WiFi.mode(WIFI_STA);
