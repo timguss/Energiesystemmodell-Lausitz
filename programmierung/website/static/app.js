@@ -4,6 +4,41 @@ let metaCache = {}; // Cache für Meta-Daten
 let pendingRequests = new Set(); // Verhindert doppelte Requests
 const FETCH_TIMEOUT = 12000; // 12 Sekunden Frontend-Timeout
 
+// ============================================================================
+// SELECTIVE POLLING STATE
+// ============================================================================
+const BOOT_WINDOW_MS = 10000; // 10 seconds of trying all ESPs on startup
+const FIRST_BOOT_TIME = Date.now();
+
+// true once an ESP has responded successfully at least once
+const espConnectedHistory = { esp1: false, esp2: false, esp3: false, esp4: false };
+
+// true when user manually clicks "Connect" for a suspended ESP
+const espManualTry = { esp1: false, esp2: false, esp3: false, esp4: false };
+
+// Returns true if we should poll the given ESP this cycle
+function shouldPollEsp(device) {
+  if (Date.now() - FIRST_BOOT_TIME < BOOT_WINDOW_MS) return true;
+  if (espConnectedHistory[device]) return true;
+  if (espManualTry[device]) return true;
+  return false;
+}
+
+// Called from the Connect button — re-enables polling for a suspended ESP
+function connectEsp(device) {
+  espManualTry[device] = true;
+  updateConnectButtonVisibility(device);
+  refreshDeviceState(device);
+}
+
+// Shows/hides the Connect button based on current polling state
+function updateConnectButtonVisibility(device) {
+  const btn = document.getElementById('connect-btn-' + device);
+  if (!btn) return;
+  const isSuspended = !shouldPollEsp(device);
+  btn.style.display = isSuspended ? 'inline-block' : 'none';
+}
+
 // Fetch with timeout to prevent hanging requests
 function fetchWithTimeout(url, options = {}, timeout = FETCH_TIMEOUT) {
   const controller = new AbortController();
@@ -111,11 +146,18 @@ async function fetchState(device) {
       deviceFailCount[device]++;
     } else {
       deviceFailCount[device] = 0; // Reset counter on success
+      // Lock in permanent polling once connected
+      if (!espConnectedHistory[device]) {
+        espConnectedHistory[device] = true;
+        espManualTry[device] = false;
+        updateConnectButtonVisibility(device);
+      }
     }
 
     // Only update status if we reach MAX_FAILS or go from offline to online
     if (deviceFailCount[device] >= MAX_FAILS) {
       updateStatusDisplay(device, false);
+      updateConnectButtonVisibility(device); // may need to reveal Connect button
     } else if (deviceFailCount[device] === 0) {
       updateStatusDisplay(device, true);
     }
@@ -250,12 +292,12 @@ async function initDeviceRelays(device, existingState = null) {
 }
 
 async function buildRelays() {
-  // Versuche alle Geräte parallel zu initialisieren
+  // Versuche alle Geräte parallel zu initialisieren (ESP4 leicht priorisiert)
   await Promise.all([
+    initDeviceRelays('esp4'),
     initDeviceRelays('esp1'),
     initDeviceRelays('esp2'),
-    initDeviceRelays('esp3'),
-    initDeviceRelays('esp4')
+    initDeviceRelays('esp3')
   ]);
 }
 
@@ -555,43 +597,24 @@ function updateEsp4Sensors(state) {
 // ============================================================================
 
 // Each device is fetched ONCE per cycle. Results are reused for relays, temps, sensors.
-// Promise.allSettled ensures one slow device doesn't block others.
 async function refreshAll() {
-  // Sequential fetching to avoid overloading the single-threaded Host-ESP
-  // Each request gets its own "time slice" instead of competing for the Host's attention
-
   await checkHostStatus();
-
-  // ESP1
-  const state1 = await fetchState('esp1');
-  if (state1) {
-    await initDeviceRelays('esp1', state1);
-    refreshRelayCheckboxes('esp1', state1);
-    updateTemps('esp1', state1);
+  ['esp1', 'esp2', 'esp3', 'esp4'].forEach(d => updateConnectButtonVisibility(d));
+  if (shouldPollEsp('esp4')) {
+    const state4 = await fetchState('esp4');
+    if (state4) { await initDeviceRelays('esp4', state4); refreshRelayCheckboxes('esp4', state4); updateEsp4Sensors(state4); }
   }
-
-  // ESP2
-  const state2 = await fetchState('esp2');
-  if (state2) {
-    await initDeviceRelays('esp2', state2);
-    refreshRelayCheckboxes('esp2', state2);
-    updateTemps('esp2', state2);
+  if (shouldPollEsp('esp1')) {
+    const state1 = await fetchState('esp1');
+    if (state1) { await initDeviceRelays('esp1', state1); refreshRelayCheckboxes('esp1', state1); updateTemps('esp1', state1); }
   }
-
-  // ESP4
-  const state4 = await fetchState('esp4');
-  if (state4) {
-    await initDeviceRelays('esp4', state4);
-    refreshRelayCheckboxes('esp4', state4);
-    updateEsp4Sensors(state4);
+  if (shouldPollEsp('esp2')) {
+    const state2 = await fetchState('esp2');
+    if (state2) { await initDeviceRelays('esp2', state2); refreshRelayCheckboxes('esp2', state2); updateTemps('esp2', state2); }
   }
-
-  // ESP3
-  const state3 = await fetchState('esp3');
-  if (state3) {
-    await initDeviceRelays('esp3', state3);
-    refreshRelayCheckboxes('esp3', state3);
-    updateEsp3LegacyUI(state3);
+  if (shouldPollEsp('esp3')) {
+    const state3 = await fetchState('esp3');
+    if (state3) { await initDeviceRelays('esp3', state3); refreshRelayCheckboxes('esp3', state3); updateEsp3LegacyUI(state3); }
   }
 }
 

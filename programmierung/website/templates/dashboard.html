@@ -28,12 +28,32 @@
 
   <div class="card">
     <div class="section-title">Verbindungsstatus</div>
-    <div class="grid" style="grid-template-columns: repeat(4, 1fr); gap: 8px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
       <div id="status-host" class="status-indicator">Host</div>
-      <div id="status-esp1" class="status-indicator">ESP1</div>
-      <div id="status-esp2" class="status-indicator">ESP2</div>
-      <div id="status-esp3" class="status-indicator">ESP3</div>
-      <div id="status-esp4" class="status-indicator">ESP4</div>
+
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div id="status-esp1" class="status-indicator">ESP1</div>
+        <button id="connect-btn-esp1" onclick="connectEsp('esp1')"
+          style="display:none; font-size:0.75rem; padding:4px 8px;">Verbinden</button>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div id="status-esp2" class="status-indicator">ESP2</div>
+        <button id="connect-btn-esp2" onclick="connectEsp('esp2')"
+          style="display:none; font-size:0.75rem; padding:4px 8px;">Verbinden</button>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div id="status-esp3" class="status-indicator">ESP3</div>
+        <button id="connect-btn-esp3" onclick="connectEsp('esp3')"
+          style="display:none; font-size:0.75rem; padding:4px 8px;">Verbinden</button>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <div id="status-esp4" class="status-indicator">ESP4</div>
+        <button id="connect-btn-esp4" onclick="connectEsp('esp4')"
+          style="display:none; font-size:0.75rem; padding:4px 8px;">Verbinden</button>
+      </div>
     </div>
     <style>
       .status-indicator {
@@ -44,6 +64,7 @@
         color: #777;
         text-align: center;
         font-size: 0.9rem;
+        min-width: 50px;
       }
 
       .status-indicator.online {

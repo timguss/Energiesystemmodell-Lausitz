@@ -15,11 +15,11 @@ struct RelayConfig {
 const uint8_t RELAY_COUNT = 5;
 
 RelayConfig RELAYS[RELAY_COUNT] = {
-  {18, "Relay 1", false}, // First relay reversed (High Trigger)
-  {19, "Relay 2", true},  // Others stay Active Low
-  {21, "Relay 3", true},
-  {22, "Relay 4", true},
-  {23, "Relay 5", true},
+  {18, "Elektrolyseur", false}, // First relay reversed (High Trigger)
+  {19, "Außen Relay", true},  // Others stay Active Low
+  {21, "Mitte Relay", true},
+  {22, "Innen Relay", true},
+  {23, "Lüfter", true},
 };
 
 float currents[5];
@@ -205,6 +205,24 @@ void registerWithHost() {
   http.end();
 }
 
+// -------------------- WIFI EVENTS --------------------
+void WiFiEvent(WiFiEvent_t event) {
+  switch(event) {
+    case SYSTEM_EVENT_STA_GOT_IP:
+      Serial.print("WiFi connected! IP address: ");
+      Serial.println(WiFi.localIP());
+      // Re-register with the host immediately upon connection
+      registerWithHost();
+      break;
+    case SYSTEM_EVENT_STA_DISCONNECTED:
+      Serial.println("WiFi lost connection. Auto-Reconnect will attempt to fix.");
+      hostConnected = false;
+      break;
+    default:
+      break;
+  }
+}
+
 // -------------------- SETUP --------------------
 void setup(){
 
@@ -219,14 +237,17 @@ void setup(){
 
   // Relais init
   for(int i=0;i<RELAY_COUNT;i++){
-    pinMode(RELAYS[i].pin, OUTPUT);
+    // Set internal state to OFF *before* switching pin to OUTPUT mode
+    // to prevent split-second relay triggers on boot.
     digitalWrite(RELAYS[i].pin, logicalToPhys(0, RELAYS[i].activeLow));
+    pinMode(RELAYS[i].pin, OUTPUT);
   }
 
   WiFi.mode(WIFI_STA);
+  WiFi.onEvent(WiFiEvent);              // Attach event handler
   WiFi.setSleep(false);         
   WiFi.setTxPower(WIFI_POWER_19_5dBm); // Maximum TX Power for stability
-  WiFi.setAutoReconnect(true); 
+  WiFi.setAutoReconnect(true);         // Crucial for background reconnects
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   Serial.print("Connecting to WiFi");
@@ -236,13 +257,6 @@ void setup(){
     Serial.print(".");
   }
   Serial.println();
-
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("WiFi connected: " + WiFi.localIP().toString());
-    registerWithHost();
-  } else {
-    Serial.println("WiFi connection timeout, will retry...");
-  }
 
   server.on("/state", HTTP_GET, handleState);
   server.on("/set", HTTP_GET, handleSet);
@@ -273,12 +287,10 @@ void loop() {
     lastPrint = now;
   }
 
-  // Re-register with host every 60 seconds
+  // Heartbeat: Re-register with host every 60 seconds if connected.
+  // We NO LONGER call WiFi.begin() here, because it conflicts with setAutoReconnect(true).
   if (now - lastCheck > 60000) {
-    if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("WiFi OFFLINE - reconnecting...");
-      WiFi.begin(WIFI_SSID, WIFI_PASS);
-    } else {
+    if (WiFi.status() == WL_CONNECTED) {
       registerWithHost();
     }
     lastCheck = now;
