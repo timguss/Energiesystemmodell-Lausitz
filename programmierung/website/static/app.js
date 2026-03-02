@@ -19,9 +19,16 @@ let deviceStatus = {
   esp1: false,
   esp2: false,
   esp3: false,
-  esp4: false,
-
+  esp4: false
 };
+let deviceFailCount = {
+  host: 0,
+  esp1: 0,
+  esp2: 0,
+  esp3: 0,
+  esp4: 0
+};
+const MAX_FAILS = 3; // Gerät wird erst nach 3 Fehlern als offline markiert
 
 function toggleViewMode() {
   const toggle = document.getElementById('viewToggle');
@@ -99,14 +106,31 @@ async function fetchState(device) {
 
     // Check if device is marked as offline by backend
     let isOffline = !!j.offline;
-    updateStatusDisplay(device, !isOffline);
+
+    if (isOffline) {
+      deviceFailCount[device]++;
+    } else {
+      deviceFailCount[device] = 0; // Reset counter on success
+    }
+
+    // Only update status if we reach MAX_FAILS or go from offline to online
+    if (deviceFailCount[device] >= MAX_FAILS) {
+      updateStatusDisplay(device, false);
+    } else if (deviceFailCount[device] === 0) {
+      updateStatusDisplay(device, true);
+    }
 
     let body = j.body || j;
     if (isOffline) body.offline = true; // Inject flag
     return body;
   } catch (e) {
     if (e.name !== 'AbortError') console.error('state err', device, e);
-    updateStatusDisplay(device, false);
+
+    deviceFailCount[device]++;
+    if (deviceFailCount[device] >= MAX_FAILS) {
+      updateStatusDisplay(device, false);
+    }
+
     return null;
   } finally {
     pendingRequests.delete('state-' + device);
@@ -132,12 +156,24 @@ async function checkHostStatus() {
     let r = await fetchWithTimeout('/api/debug/host');
     if (r.ok) {
       let j = await r.json();
-      updateStatusDisplay('host', j.host_reachable);
+      if (j.host_reachable) {
+        deviceFailCount.host = 0;
+        updateStatusDisplay('host', true);
+      } else {
+        deviceFailCount.host++;
+      }
     } else {
+      deviceFailCount.host++;
+    }
+
+    if (deviceFailCount.host >= MAX_FAILS) {
       updateStatusDisplay('host', false);
     }
   } catch (e) {
-    updateStatusDisplay('host', false);
+    deviceFailCount.host++;
+    if (deviceFailCount.host >= MAX_FAILS) {
+      updateStatusDisplay('host', false);
+    }
   }
 }
 

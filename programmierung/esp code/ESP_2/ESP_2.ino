@@ -123,6 +123,7 @@ void registerAtHost() {
   String url = String("http://") + HOST_IP.toString() + "/register";
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
+  http.setTimeout(500);
   String payload = "{\"name\":\"esp2\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
   http.POST(payload);
   http.end();
@@ -161,6 +162,7 @@ void setup() {
   // WiFi
   WiFi.onEvent(onWiFiEvent);
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   
   Serial.print("Verbinde mit ");

@@ -108,20 +108,20 @@ void readSensors() {
 }
 
 // -------------------- JSON STATE --------------------
+// -------------------- JSON STATE --------------------
 void handleState(){
-
-  readSensors();
-
-  String s="{";
+  // Wir lesen die Sensoren nicht mehr hier (wird im Loop gemacht), 
+  // um die Antwortzeit zu minimieren.
+  
+  String s;
+  s.reserve(400); // Speicher reservieren um Fragmentierung zu vermeiden
+  s = "{";
 
   // Sensoren
   s += "\"sensors\":[";
   for(int i=0;i<5;i++){
-    s += "{";
-    s += "\"current\":" + String(currentValues[i],2) + ",";
-    s += "\"pressure\":" + String(pressureValues[i],2);
-    s += "}";
-    if(i<4) s+=",";
+    s += "{\"current\":" + String(currentValues[i], 1) + ",\"pressure\":" + String(pressureValues[i], 2) + "}";
+    if(i<4) s += ",";
   }
   s += "],";
 
@@ -129,16 +129,15 @@ void handleState(){
   s += "\"relays\":[";
   for(int i=0;i<RELAY_COUNT;i++){
     s += String(physToLogical(digitalRead(RELAYS[i].pin), RELAYS[i].activeLow));
-    if(i<RELAY_COUNT-1) s+=",";
+    if(i<RELAY_COUNT-1) s += ",";
   }
   s += "]";
 
   // Flowmeter
-  s += ",\"flow\":" + String(flow_L_per_min, 2);
+  s += ",\"flow\":" + String(flow_L_per_min, 1);
+  s += "}";
 
-  s+="}";
-
-  server.send(200,"application/json",s);
+  server.send(200, "application/json", s);
 }
 
 // -------------------- RELAIS SETZEN --------------------
@@ -174,29 +173,9 @@ void handleMeta(){
 }
 
 void printStatus() {
-  Serial.println("\n--- ESP4 Status ---");
-
-  for (int i = 0; i < 5; i++) {
-    Serial.print("Sensor ");
-    Serial.print(i + 1);
-    Serial.print(": ");
-    Serial.print(currentValues[i], 2);   // <-- currentValues statt currents
-    Serial.print(" mA | ");
-    Serial.print(pressureValues[i], 2);  // <-- pressureValues statt pressures
-    Serial.println(" bar");
-  }
-
-  Serial.print("Relais: [");
-  for (int i = 0; i < RELAY_COUNT; i++) {
-    Serial.print(relayState[i]);
-    if (i < RELAY_COUNT - 1) Serial.print(",");
-  }
-  Serial.println("]");
-
-  Serial.print("Flow: ");
-  Serial.print(flow_L_per_min, 2);
-  Serial.println(" L/min");
-  Serial.println("-------------------");
+  // Nur noch eine Zeile für weniger Blocking
+  Serial.printf("ESP4 Stats: Flow: %.1f L/min | P[0]: %.1f bar | P[4]: %.1f bar\n", 
+                flow_L_per_min, pressureValues[0], pressureValues[4]);
 }
 
 // -------------------- HOST REG --------------------
@@ -206,7 +185,7 @@ void registerWithHost() {
   HTTPClient http;
   http.begin("http://192.168.4.1/register");
   http.addHeader("Content-Type", "application/json");
-  http.setTimeout(2000); // Short timeout so we don't block web server
+  http.setTimeout(1000); // 1s timeout for registration to be safe
 
   String payload = "{\"name\":\"esp4\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
   int httpCode = http.POST(payload);
@@ -245,7 +224,9 @@ void setup(){
   }
 
   WiFi.mode(WIFI_STA);
-  WiFi.setAutoReconnect(true);  // Auto-reconnect on WiFi drop
+  WiFi.setSleep(false);         
+  WiFi.setTxPower(WIFI_POWER_19_5dBm); // Maximum TX Power for stability
+  WiFi.setAutoReconnect(true); 
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   Serial.print("Connecting to WiFi");
@@ -271,6 +252,7 @@ void setup(){
 }
 
 // -------------------- LOOP --------------------
+unsigned long lastSensorRead = 0;
 unsigned long lastPrint = 0;
 unsigned long lastCheck = 0;
 
@@ -279,18 +261,22 @@ void loop() {
 
   unsigned long now = millis();
 
-  // Print status every 2 seconds (reduced frequency to lower load)
-  if (now - lastPrint > 2000) {
-    readSensors();   
+  // Sensoren alle 500ms im Hintergrund lesen
+  if (now - lastSensorRead > 500) {
+    readSensors();
+    lastSensorRead = now;
+  }
+
+  // Status alle 5 Sekunden (seltener)
+  if (now - lastPrint > 5000) {
     printStatus();
     lastPrint = now;
   }
 
-  // Re-register with host every 15 seconds
-  if (now - lastCheck > 15000) {
+  // Re-register with host every 60 seconds
+  if (now - lastCheck > 60000) {
     if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("WiFi disconnected, reconnecting...");
-      // Non-blocking reconnect attempt
+      Serial.println("WiFi OFFLINE - reconnecting...");
       WiFi.begin(WIFI_SSID, WIFI_PASS);
     } else {
       registerWithHost();

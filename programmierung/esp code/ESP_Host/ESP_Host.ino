@@ -39,9 +39,6 @@ ClientDevice clients[MAX_CLIENTS];
 // Monitoring
 int lastStationCount = 0;
 
-// HTTP Client für Forward-Requests
-HTTPClient http;
-
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -90,15 +87,14 @@ void registerClient(String name, String ip) {
   Serial.println("[Client] ERROR: Max clients reached!");
 }
 
-// Forward Request zu einem Client-ESP
+// Forward Request zu einem Client-ESP mit Retry-Logik
 String forwardRequest(String target, String method, String path, String body) {
   String ip = getClientIP(target);
   if (ip == "") {
-    Serial.println("[Forward] ERROR: Client '" + target + "' not found");
     return "{\"error\":\"Client not found\"}";
   }
   
-  // Update lastSeen timestamp for this client (FIX: prevent timeout of active clients)
+  // Update lastSeen
   for (int i = 0; i < MAX_CLIENTS; i++) {
     if (clients[i].name.equals(target)) {
       clients[i].lastSeen = millis();
@@ -107,36 +103,47 @@ String forwardRequest(String target, String method, String path, String body) {
   }
   
   String url = "http://" + ip + path;
-  Serial.println("[Forward] " + method + " " + url);
-  
-  http.begin(url);
-  http.setTimeout(2000);
-  
+  int retryCount = 0;
   int httpCode = -1;
   String payload = "";
-  
-  if (method == "GET") {
-    httpCode = http.GET();
-  } else if (method == "POST") {
-    http.addHeader("Content-Type", "application/json");
-    httpCode = http.POST(body);
+
+  // Retry-Schleife (max 2 Versuche)
+  while (retryCount < 2 && httpCode <= 0) {
+    HTTPClient httpLocal;
+    httpLocal.begin(url);
+    httpLocal.setTimeout(1500); // 1.5s pro Versuch
+    httpLocal.addHeader("Connection", "close"); // Keine persistenten Verbindungen (stabiler für AP)
+    
+    if (method == "GET") {
+      httpCode = httpLocal.GET();
+    } else {
+      httpLocal.addHeader("Content-Type", "application/json");
+      httpCode = httpLocal.POST(body);
+    }
+
+    if (httpCode > 0) {
+      payload = httpLocal.getString();
+    }
+    httpLocal.end();
+    
+    if (httpCode <= 0) {
+      retryCount++;
+      if (retryCount < 2) delay(50); // Kurz warten vor Retry
+    }
   }
   
-  if (httpCode > 0) {
-    payload = http.getString();
-  } else {
-    payload = "{\"error\":\"HTTP error " + String(httpCode) + "\"}";
-  }
-  
-  http.end();
-  
-  // FIXED: Gib das body-JSON direkt zurück ohne zu escapen
+  // JSON Response zusammenbauen
   String response = "{\"code\":" + String(httpCode) + ",\"body\":";
-  response += payload;  // Payload ist bereits JSON
+  if (httpCode > 0 && payload.length() > 0) {
+    if (payload.startsWith("{") || payload.startsWith("[")) {
+      response += payload;
+    } else {
+      response += "\"" + payload + "\"";
+    }
+  } else {
+    response += "{\"error\":\"HTTP error " + String(httpCode) + "\"}";
+  }
   response += "}";
-  
-  Serial.println("[Forward] Response code: " + String(httpCode));
-  Serial.println("[Forward] Response body length: " + String(payload.length()));
   
   return response;
 }
@@ -454,7 +461,9 @@ void setup() {
   
   // WiFi Access Point starten
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(AP_SSID, AP_PASSWORD);
+  // Allow up to 8 connections (default is 4 on some ESP32 cores)
+  // Parameters: SSID, Password, Channel, Hidden, Max_Connections
+  WiFi.softAP(AP_SSID, AP_PASSWORD, 1, 0, 8);
   WiFi.setSleep(false); // Verhindert Latenz-Spitzen und verbessert Erreichbarkeit
   
   IPAddress IP = WiFi.softAPIP();

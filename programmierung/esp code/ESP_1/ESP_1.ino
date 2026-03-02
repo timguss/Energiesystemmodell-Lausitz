@@ -314,6 +314,7 @@ void registerAtHost(){
   if(WiFi.status()!=WL_CONNECTED) return;
   HTTPClient http; String regUrl="http://192.168.4.1/register";
   http.begin(regUrl); http.addHeader("Content-Type","application/json");
+  http.setTimeout(500); 
   String payload = "{\"name\":\"esp1\",\"ip\":\""+WiFi.localIP().toString()+"\"}";
   http.POST(payload); http.end();
 }
@@ -353,6 +354,7 @@ void setup(){
   // WiFi initialisieren
   WiFi.onEvent(onWiFiEvent);
   WiFi.mode(WIFI_STA); 
+  WiFi.setSleep(false);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   
   Serial.print("Verbinde mit WiFi");

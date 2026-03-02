@@ -59,7 +59,7 @@ void registerAtHost(){
   String url = String("http://") + HOST_IP.toString() + "/register";
   http.begin(url);
   http.addHeader("Content-Type","application/json");
-  http.setTimeout(2000); // Prevents hanging if host is missing
+  http.setTimeout(500); 
   String payload = "{\"name\":\"esp3\",\"ip\":\""+WiFi.localIP().toString()+"\"}";
   http.POST(payload);
   http.end();
@@ -182,6 +182,7 @@ void setup(){
 
   WiFi.onEvent(onWiFiEvent);
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   WiFi.setAutoReconnect(true); // More stable than manual reconnect in event
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
@@ -207,7 +208,7 @@ void loop(){
   }
 
   static unsigned long lastReg = 0;
-  if(millis() - lastReg > 20000){ // Check every 20s
+  if(millis() - lastReg > 60000){ // Check every 60s
     lastReg = millis();
     if (WiFi.status() == WL_CONNECTED) {
       registerAtHost();
