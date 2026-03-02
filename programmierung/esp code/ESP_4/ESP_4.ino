@@ -47,24 +47,10 @@ void IRAM_ATTR onPulse() {
 const int SENSOR_PINS[5] = {36,39,34,35, 32};   // nur ADC Pins!
 const float SHUNT_RESISTOR = 165.0;
 
-// Gemeinsamer Nullpunkt
-const float I_ZERO = 3.19;   // mA
-const float I_FULL = 20.0;   // mA
-
-// Druckbereiche
-const float PRESSURE_MAX[5] = {
-  4.0,
-  4.0,
-  6.0,
-  10.0,
-  10.0
-};
-
 
 // -------------------- SERVER --------------------
 WebServer server(80);
 
-float pressureValues[5];
 float currentValues[5];
 
 // ------------------------------------------------
@@ -79,16 +65,13 @@ inline int logicalToPhys(int logical, bool activeLow){
 
 // -------------------- SENSOR LESEN --------------------
 void readSensors() {
-  // 1. Druck/Strom Sensoren
+  // 1. Druck/Strom Sensoren (Nur noch mA berechnen)
   for(int i=0;i<5;i++){
     int rawADC = analogRead(SENSOR_PINS[i]);
     float voltage = (rawADC / 4095.0) * 3.3;
     float current_mA = (voltage / SHUNT_RESISTOR) * 1000.0;
-    float pressure_bar = ((current_mA - I_ZERO) / (I_FULL - I_ZERO)) * PRESSURE_MAX[i];
-    if (pressure_bar < 0) pressure_bar = 0;
-    if (pressure_bar > PRESSURE_MAX[i]) pressure_bar = PRESSURE_MAX[i];
+    
     currentValues[i] = current_mA;
-    pressureValues[i] = pressure_bar;
   }
 
   // 2. Flowmeter (alle 1s berechnen)
@@ -120,7 +103,9 @@ void handleState(){
   // Sensoren
   s += "\"sensors\":[";
   for(int i=0;i<5;i++){
-    s += "{\"current\":" + String(currentValues[i], 1) + ",\"pressure\":" + String(pressureValues[i], 2) + "}";
+    // The ESP now only sends the raw current, setting pressure to 0 so the property remains 
+    // consistently typed for the frontend until the backend intercepts it.
+    s += "{\"current\":" + String(currentValues[i], 2) + ",\"pressure\":0.00}";
     if(i<4) s += ",";
   }
   s += "],";
@@ -174,8 +159,8 @@ void handleMeta(){
 
 void printStatus() {
   // Nur noch eine Zeile für weniger Blocking
-  Serial.printf("ESP4 Stats: Flow: %.1f L/min | P[0]: %.1f bar | P[4]: %.1f bar\n", 
-                flow_L_per_min, pressureValues[0], pressureValues[4]);
+  Serial.printf("ESP4 Stats: Flow: %.1f L/min | I[0]: %.2f mA | I[4]: %.2f mA\n", 
+                flow_L_per_min, currentValues[0], currentValues[4]);
 }
 
 // -------------------- HOST REG --------------------
@@ -241,6 +226,7 @@ void setup(){
     // to prevent split-second relay triggers on boot.
     digitalWrite(RELAYS[i].pin, logicalToPhys(0, RELAYS[i].activeLow));
     pinMode(RELAYS[i].pin, OUTPUT);
+    relayState[i] = 0; // Ensure logic state matches physical state completely for reporting
   }
 
   WiFi.mode(WIFI_STA);
@@ -276,7 +262,7 @@ void loop() {
   unsigned long now = millis();
 
   // Sensoren alle 500ms im Hintergrund lesen
-  if (now - lastSensorRead > 500) {
+  if (now - lastSensorRead > 200) {
     readSensors();
     lastSensorRead = now;
   }

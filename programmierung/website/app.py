@@ -247,6 +247,18 @@ def api_device_meta(device):
         report_status(device, False, str(e))
         return jsonify({"code": 200, "body": fallback_meta, "offline": True})
 
+# ============================================================================
+# ESP4 SENSOR CALIBRATION (Einfach hier anpassen!)
+# ============================================================================
+# Formel: ((current_mA - I_ZERO) / (I_FULL - I_ZERO)) * MAX_VAL
+ESP4_SENSOR_CALIBRATION = [
+    {"type": "pressure",   "i_zero": 3.19, "i_full": 20.0, "max_val": 4.0},   # Sensor 1 (Index 0)
+    {"type": "pressure",   "i_zero": 3.19, "i_full": 20.0, "max_val": 4.0},   # Sensor 2 (Index 1)
+    {"type": "pressure",   "i_zero": 3.19, "i_full": 20.0, "max_val": 6.0},   # Sensor 3 (Index 2)
+    {"type": "ultrasonic", "i_zero": 4.00, "i_full": 20.0, "min_val": 2.0, "max_val": 30.0}, # Sensor 4 (Index 3)
+    {"type": "ultrasonic", "i_zero": 4.00, "i_full": 20.0, "min_val": 2.0, "max_val": 30.0}  # Sensor 5 (Index 4)
+]
+
 @app.route("/api/device_state/<device>")
 def api_device_state(device):
     if VERBOSE: print(f"[INFO] Request: /api/device_state/{device}")
@@ -266,8 +278,8 @@ def api_device_state(device):
                 {"current":0,"pressure":0},
                 {"current":0,"pressure":0},
                 {"current":0,"pressure":0},
-                {"current":0,"pressure":0},
-                {"current":0,"pressure":0},
+                {"current":0,"distance":0}, # Modified for ultrasonic
+                {"current":0,"distance":0}, # Modified for ultrasonic
             ],
             "flow": 0
         }
@@ -276,6 +288,47 @@ def api_device_state(device):
         res = host_forward(device, "GET", "/state", timeout=10)
         if res.get("code") == 200:
             report_status(device, True)
+            
+            # --- ESP4 SENSOR CALIBRATION CALCULATION ---
+            from typing import Dict, Any, List, cast
+            body_obj = res.get("body")
+            if device == "esp4" and isinstance(body_obj, dict):
+                body_dict = cast(Dict[str, Any], body_obj)
+                sensors_obj = body_dict.get("sensors")
+                
+                if isinstance(sensors_obj, list):
+                    sensors = cast(List[Dict[str, Any]], sensors_obj)
+                    
+                    for i in range(min(5, len(sensors))):
+                        cal = ESP4_SENSOR_CALIBRATION[i]
+                        cal_i_zero = float(cal.get("i_zero", 3.19))
+                        cal_i_full = float(cal.get("i_full", 20.0))
+                        
+                        sensor_data = sensors[i]
+                        if isinstance(sensor_data, dict):
+                            current_mA = float(sensor_data.get("current", 0))
+                            
+                            # Calculate percentage based on current
+                            if current_mA <= cal_i_zero:
+                                pct = 0.0
+                            elif current_mA >= cal_i_full:
+                                pct = 1.0
+                            else:
+                                pct = (current_mA - cal_i_zero) / (cal_i_full - cal_i_zero)
+                                
+                            # Apply specific type limits and labels
+                            if cal.get("type") == "pressure":
+                                max_val = float(cal.get("max_val", 4.0))
+                                val = float(pct * max_val)
+                                sensor_data["pressure"] = round(val, 2)
+                            elif cal.get("type") == "ultrasonic":
+                                max_val = float(cal.get("max_val", 30.0))
+                                min_val = float(cal.get("min_val", 2.0))
+                                val = float((pct * (max_val - min_val)) + min_val)
+                                # We use 'pressure' key in backend to keep frontend app.js compatible without massive rewrites 
+                                # but we can pass 'distance' for clarity if wanted, though keeping 'pressure' is safer
+                                sensor_data["pressure"] = round(val, 2)
+            
             if VERBOSE: print(f"[INFO] State response for {device}: {res}")
             return jsonify(res)
         else:
