@@ -15,6 +15,39 @@ HTTP_TIMEOUT = 10  # Timeout in Sekunden
 USE_MOCK_DATA = False # Set to False for real hardware connection
 VERBOSE = False # Set to True for detailed debug logging
 
+# region agent log
+import os
+
+DEBUG_SESSION_ID = "3ab92e"
+# IMPORTANT: Workspace root (for this debug session) is the git project root.
+# We hardcode the absolute path so logs always go to the correct location.
+DEBUG_LOG_PATH = r"c:\Users\User\Documents\GitHub\Energiesystemmodell-Lausitz\debug-3ab92e.log"
+
+
+def agent_log(run_id: str, hypothesis_id: str, location: str, message: str, data: dict) -> None:
+    """
+    Minimal NDJSON logger for debug session instrumentation.
+    Writes one JSON object per line to DEBUG_LOG_PATH.
+    """
+    try:
+        ts_ms = int(time.time() * 1000)
+        entry = {
+            "sessionId": DEBUG_SESSION_ID,
+            "id": f"log_{ts_ms}",
+            "timestamp": ts_ms,
+            "location": location,
+            "message": message,
+            "data": data,
+            "runId": run_id,
+            "hypothesisId": hypothesis_id,
+        }
+        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception:
+        # Instrumentation must never break main logic
+        pass
+# endregion
+
 # Status tracking to reduce terminal spam
 OFFLINE_DEVICES = set()
 
@@ -127,6 +160,39 @@ def host_forward(target, method, path, body_str="", timeout=HTTP_TIMEOUT):
     try:
         resp = host_post("/forward", json.dumps(payload), timeout=timeout)
         if VERBOSE: print(f"[DEBUG] Forward response RAW: {repr(resp)}")
+
+        # Agent instrumentation: log low-level forward result for esp4 interactions (H1/H2)
+        try:
+            if target == "esp4":
+                code_val = None
+                body_preview = None
+                if isinstance(resp, dict):
+                    code_val = resp.get("code", None)
+                    body_val = resp.get("body", "")
+                    # keep body preview short to avoid large logs
+                    if isinstance(body_val, str):
+                        body_preview = body_val[:120]
+                    else:
+                        try:
+                            body_preview = json.dumps(body_val)[:120]
+                        except Exception:
+                            body_preview = str(body_val)[:120]
+                agent_log(
+                    run_id="pre-fix",
+                    hypothesis_id="H1",
+                    location="app.py:host_forward",
+                    message="host_forward esp4 result",
+                    data={
+                        "target": target,
+                        "method": method,
+                        "path": path,
+                        "code": code_val,
+                        "body_preview": body_preview,
+                        "raw_type": type(resp).__name__,
+                    },
+                )
+        except Exception:
+            pass
         
         # resp expected {"code":int, "body":"..."} where body may be a JSON string
         if isinstance(resp, dict):
@@ -252,11 +318,11 @@ def api_device_meta(device):
 # ============================================================================
 # Formel: ((current_mA - I_ZERO) / (I_FULL - I_ZERO)) * MAX_VAL
 ESP4_SENSOR_CALIBRATION = [
-    {"type": "pressure",   "i_zero": 3.19, "i_full": 20.0, "max_val": 4.0},   # Sensor 1 (Index 0)
-    {"type": "pressure",   "i_zero": 3.19, "i_full": 20.0, "max_val": 4.0},   # Sensor 2 (Index 1)
-    {"type": "pressure",   "i_zero": 3.19, "i_full": 20.0, "max_val": 6.0},   # Sensor 3 (Index 2)
+    {"type": "pressure",   "i_zero": 2.88, "i_full": 18.88, "max_val": 4.0},   # Sensor 1 (Index 0)
+    {"type": "pressure",   "i_zero": 3.00, "i_full": 19.19, "max_val": 4.0},   # Sensor 2 (Index 1)
+    {"type": "pressure",   "i_zero": 2.98, "i_full": 18.98, "max_val": 6.0},   # Sensor 3 (Index 2)
     {"type": "ultrasonic", "i_zero": 4.00, "i_full": 20.0, "min_val": 2.0, "max_val": 30.0}, # Sensor 4 (Index 3)
-    {"type": "ultrasonic", "i_zero": 4.00, "i_full": 20.0, "min_val": 2.0, "max_val": 30.0}  # Sensor 5 (Index 4)
+    {"type": "ultrasonic", "i_zero": 3.08, "i_full": 20.0, "min_val": 2.0, "max_val": 30.0}  # Sensor 5 (Index 4)
 ]
 
 @app.route("/api/device_state/<device>")
@@ -295,6 +361,21 @@ def api_device_state(device):
             if device == "esp4" and isinstance(body_obj, dict):
                 body_dict = cast(Dict[str, Any], body_obj)
                 sensors_obj = body_dict.get("sensors")
+                relays_obj = body_dict.get("relays")
+
+                # Agent instrumentation: capture esp4 relay array when state is fetched (H3)
+                try:
+                    agent_log(
+                        run_id="pre-fix",
+                        hypothesis_id="H3",
+                        location="app.py:api_device_state",
+                        message="esp4 state relays snapshot",
+                        data={
+                            "relays": list(relays_obj) if isinstance(relays_obj, list) else relays_obj,
+                        },
+                    )
+                except Exception:
+                    pass
                 
                 if isinstance(sensors_obj, list):
                     sensors = cast(List[Dict[str, Any]], sensors_obj)
@@ -348,8 +429,44 @@ def api_relay_set():
     device, idx = GLOBAL_MAP[gi]
     path = f"/set?idx={idx}&val={val}"
     print(f"[INFO] Relay set: global={gi}, device={device}, idx={idx}, val={val}")
+
+    # Agent instrumentation: log every esp4 relay toggle request (H1/H2)
     try:
-        return jsonify(host_forward(device, "GET", path, timeout=10))
+        if device == "esp4":
+            agent_log(
+                run_id="pre-fix",
+                hypothesis_id="H1",
+                location="app.py:api_relay_set",
+                message="esp4 relay toggle requested",
+                data={
+                    "global_idx": gi,
+                    "device_idx": idx,
+                    "val": val,
+                    "path": path,
+                },
+            )
+    except Exception:
+        pass
+
+    try:
+        res = host_forward(device, "GET", path, timeout=10)
+
+        # Agent instrumentation: capture esp4 relay toggle low-level result (H2)
+        try:
+            if device == "esp4":
+                agent_log(
+                    run_id="pre-fix",
+                    hypothesis_id="H2",
+                    location="app.py:api_relay_set",
+                    message="esp4 relay toggle host_forward response",
+                    data={
+                        "response_code": res.get("code") if isinstance(res, dict) else None,
+                    },
+                )
+        except Exception:
+            pass
+
+        return jsonify(res)
     except Exception as e:
         print(f"[ERROR] /api/relay/set: {str(e)}")
         return jsonify({"error": str(e)}), 502

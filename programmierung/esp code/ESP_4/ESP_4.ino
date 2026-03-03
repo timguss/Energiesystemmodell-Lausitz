@@ -16,7 +16,7 @@ const uint8_t RELAY_COUNT = 5;
 
 RelayConfig RELAYS[RELAY_COUNT] = {
   {18, "Elektrolyseur", false}, // First relay reversed (High Trigger)
-  {19, "Außen Relay", true},  // Others stay Active Low
+  {19, "Außen Relay", true},    // Others stay Active Low
   {21, "Mitte Relay", true},
   {22, "Innen Relay", true},
   {23, "Lüfter", true},
@@ -191,13 +191,21 @@ void registerWithHost() {
 }
 
 // -------------------- WIFI EVENTS --------------------
+void applySafeRelayDefaults() {
+  for (int i = 0; i < RELAY_COUNT; i++) {
+    relayState[i] = 0;
+    digitalWrite(RELAYS[i].pin, logicalToPhys(0, RELAYS[i].activeLow));
+  }
+}
+
 void WiFiEvent(WiFiEvent_t event) {
   switch(event) {
     case ARDUINO_EVENT_WIFI_STA_GOT_IP:
       Serial.print("WiFi connected! IP address: ");
       Serial.println(WiFi.localIP());
-      // Re-register with the host immediately upon connection
       registerWithHost();
+      // Enforce safe baseline: all relays OFF after each successful (re)connect
+      applySafeRelayDefaults();
       break;
     case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
       Serial.println("WiFi lost connection. Auto-Reconnect will attempt to fix.");
@@ -222,17 +230,16 @@ void setup(){
 
   // Relais init
   for(int i=0;i<RELAY_COUNT;i++){
-    // Set internal state to OFF *before* switching pin to OUTPUT mode
-    // to prevent split-second relay triggers on boot.
-    digitalWrite(RELAYS[i].pin, logicalToPhys(0, RELAYS[i].activeLow));
     pinMode(RELAYS[i].pin, OUTPUT);
-    relayState[i] = 0; // Ensure logic state matches physical state completely for reporting
   }
+  // Enforce a known safe baseline once pins are outputs
+  applySafeRelayDefaults();
 
   WiFi.mode(WIFI_STA);
-  WiFi.onEvent(WiFiEvent);              // Attach event handler
-  WiFi.setSleep(false);         
-  WiFi.setTxPower(WIFI_POWER_19_5dBm); // Maximum TX Power for stability
+  WiFi.onEvent(WiFiEvent);
+  WiFi.setSleep(false);
+  // Reduce TX power to lower peak current draw when WiFi is active alongside relays
+  WiFi.setTxPower(WIFI_POWER_15dBm);
   WiFi.setAutoReconnect(true);         // Crucial for background reconnects
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
