@@ -1,4 +1,115 @@
 {
+    "notaus": {
+        "name": "Notaus",
+        "description": "Notaus",
+        "actions": [
+            {
+                "type": "relay",
+                "global_idx": 1,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 2,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 3,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 4,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 5,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 6,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 7,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 8,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 9,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 10,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 11,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 12,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 13,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 14,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 15,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 16,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 17,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 18,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 19,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 20,
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "global_idx": 21,
+                "val": 0
+            }
+        ]
+    },
     "kohlekraftwerk_startup": {
         "name": "Kohlekraftwerk Start - test",
         "description": "Fährt das Kohlekraftwerk hoch",

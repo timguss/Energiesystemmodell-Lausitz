@@ -181,11 +181,8 @@
                         <div class="card-icon">🏭</div>
                         <h3 class="card-title">Kohlekraftwerk</h3>
                     </div>
-                    <div class="card-status">
-                        <span class="status-label">Temperatur:</span>
-                        <span class="status-value" id="temp-esp1">--°C</span>
-                    </div>
                     <div class="card-scenarios" id="scenarios-coal"></div>
+                    <div class="card-sensors" id="sensors-coal"></div>
                     <div class="relay-list" id="coal-controls">
                         <div class="loading-spinner">Lade...</div>
                     </div>
@@ -197,11 +194,8 @@
                         <div class="card-icon">⛽</div>
                         <h3 class="card-title">Gaskraftwerk</h3>
                     </div>
-                    <div class="card-status">
-                        <span class="status-label">Temperatur:</span>
-                        <span class="status-value" id="temp-esp2">--°C</span>
-                    </div>
                     <div class="card-scenarios" id="scenarios-gas"></div>
+                    <div class="card-sensors" id="sensors-gas"></div>
                     <div class="relay-list" id="gas-controls">
                         <div class="loading-spinner">Lade...</div>
                     </div>
@@ -214,6 +208,7 @@
                         <h3 class="card-title">Elektrolyseur</h3>
                     </div>
                     <div class="card-scenarios" id="scenarios-electro"></div>
+                    <div class="card-sensors" id="sensors-electro"></div>
                     <div class="relay-list" id="electro-controls">
                         <div class="loading-spinner">Lade...</div>
                     </div>
@@ -226,6 +221,7 @@
                         <h3 class="card-title">Wärmepumpe</h3>
                     </div>
                     <div class="card-scenarios" id="scenarios-lake"></div>
+                    <div class="card-sensors" id="sensors-lake"></div>
                     <div class="relay-list" id="lake-controls">
                         <div class="loading-spinner">Lade...</div>
                     </div>
@@ -242,6 +238,7 @@
                         <span class="status-value highlight" id="wind-status">--</span>
                     </div>
                     <div class="card-scenarios" id="scenarios-wind"></div>
+                    <div class="card-sensors" id="sensors-wind"></div>
                     <div class="control-group-centered">
                         <div class="button-group">
                             <button class="btn-control" onclick="setWind(1)">AN</button>
@@ -262,6 +259,7 @@
                         <span class="status-value highlight" id="train-pwm">0</span>
                     </div>
                     <div class="card-scenarios" id="scenarios-train"></div>
+                    <div class="card-sensors" id="sensors-train"></div>
                     <div class="slider-container">
                         <input type="range" id="train-slider" class="control-slider" min="0" max="255" value="0"
                             oninput="updateTrainPWM(this.value)">
