@@ -19,10 +19,10 @@
 // ============================================================================
 // MAC-ADRESSEN DER CLIENTS — hier eintragen nach erstem Flashen!
 // ============================================================================
-uint8_t MAC_ESP1[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // TODO: ersetzen
-uint8_t MAC_ESP2[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // TODO: ersetzen
-uint8_t MAC_ESP3[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // TODO: ersetzen
-uint8_t MAC_ESP4[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // TODO: ersetzen
+uint8_t MAC_ESP1[6] = {0x84, 0x1F, 0xE8, 0x26, 0x58, 0xD8};
+uint8_t MAC_ESP2[6] = {0x20, 0xF3, 0xA8, 0x6A, 0xFB, 0xDC};
+uint8_t MAC_ESP3[6] = {0x20, 0xE7, 0xC8, 0x6B, 0x4F, 0x18};
+uint8_t MAC_ESP4[6] = {0x8C, 0x4F, 0x00, 0x2E, 0x59, 0xE8};
 
 // ============================================================================
 // WIFI AP
@@ -94,11 +94,12 @@ const char* CLIENT_NAMES[4] = {"esp1", "esp2", "esp3", "esp4"};
 // ESP-NOW CALLBACKS
 // ============================================================================
 
-void onSendCallback(const uint8_t* mac, esp_now_send_status_t status) {
+void onSendCallback(const wifi_tx_info_t* info, esp_now_send_status_t status) {
   // Optional: Fehlerlogging wenn Paket nicht ankam
   if (status != ESP_NOW_SEND_SUCCESS) {
     Serial.printf("[ESP-NOW] Send FAILED to %02X:%02X:%02X:%02X:%02X:%02X\n",
-                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                  info->des_addr[0], info->des_addr[1], info->des_addr[2],
+                  info->des_addr[3], info->des_addr[4], info->des_addr[5]);
   }
 }
 
