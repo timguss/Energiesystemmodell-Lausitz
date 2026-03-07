@@ -1,0 +1,203 @@
+{
+    "kohlekraftwerk_startup": {
+        "name": "Kohlekraftwerk Start - test",
+        "description": "Fährt das Kohlekraftwerk hoch",
+        "target_card": "coal",
+        "actions": [
+            {
+                "type": "relay",
+                "global_idx": 9,
+                "val": 1
+            },
+            {
+                "type": "delay",
+                "ms": 1500
+            },
+            {
+                "type": "relay",
+                "global_idx": 10,
+                "val": 1
+            }
+        ]
+    },
+    "kohlekraftwerk_shutdown": {
+        "name": "Kohlekraftwerk Stop - test",
+        "description": "Sicherer Stopp",
+        "target_card": "coal",
+        "actions": [
+            {
+                "type": "relay",
+                "global_idx": 10,
+                "val": 0
+            },
+            {
+                "type": "delay",
+                "ms": 1000
+            },
+            {
+                "type": "relay",
+                "global_idx": 9,
+                "val": 0
+            }
+        ]
+    },
+    "test_sequenz": {
+        "name": "Test-Sequenz - test",
+        "description": "Alle Test-Relays checken",
+        "actions": [
+            {
+                "type": "relay",
+                "global_idx": 1,
+                "val": 1
+            },
+            {
+                "type": "delay",
+                "ms": 1000
+            },
+            {
+                "type": "relay",
+                "global_idx": 1,
+                "val": 0
+            }
+        ]
+    },
+    "elektrolyseur_an": {
+        "name": "Elektrolyseur an - test",
+        "description": "Elektrolyseur an",
+        "target_card": "electro",
+        "actions": [
+            {
+                "type": "relay",
+                "name": "Lüfter",
+                "val": 1
+            },
+            {
+                "type": "relay",
+                "name": "Elekrolyseur",
+                "val": 1
+            }
+        ]
+    },
+    "elektrolyseur_komplett_aus": {
+        "name": "Elektrolyseur aus - test",
+        "description": "Elektrolyseur aus",
+        "target_card": "electro",
+        "actions": [
+            {
+                "type": "relay",
+                "name": "Elekrolyseur",
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "name": "Tank füllen",
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "name": "Tank leeren",
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "name": "Durchschalten",
+                "val": 0
+            },
+            {
+                "type": "delay",
+                "ms": 3000
+            },
+            {
+                "type": "relay",
+                "name": "Lüfter",
+                "val": 0
+            }
+        ]
+    },
+    "elektrolyseur_in_brennstoffzelle": {
+        "name": "Elektrolyseur in Brennstoffzelle - test",
+        "description": "Elektrolyseur in Brennstoffzelle",
+        "target_card": "electro",
+        "actions": [
+            {
+                "type": "relay",
+                "name": "Lüfter",
+                "val": 1
+            },
+            {
+                "type": "relay",
+                "name": "Durchschalten",
+                "val": 1
+            },
+            {
+                "type": "relay",
+                "name": "Elekrolyseur",
+                "val": 1
+            }
+        ]
+    },
+    "elektrolyseur_in_tank": {
+        "name": "Elektrolyseur in Tank - test",
+        "description": "Elektrolyseur in Tank",
+        "target_card": "electro",
+        "actions": [
+            {
+                "type": "relay",
+                "name": "Lüfter",
+                "val": 1
+            },
+            {
+                "type": "relay",
+                "name": "Tank leeren",
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "name": "Durchschalten",
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "name": "Tank füllen",
+                "val": 1
+            },
+            {
+                "type": "relay",
+                "name": "Elekrolyseur",
+                "val": 1
+            }
+        ]
+    },
+    "tank_in_brennstoffzelle": {
+        "name": "Tank in Brennstoffzelle - test",
+        "description": "Tank in Brennstoffzelle",
+        "target_card": "electro",
+        "actions": [
+            {
+                "type": "relay",
+                "name": "Lüfter",
+                "val": 1
+            },
+            {
+                "type": "relay",
+                "name": "Elekrolyseur",
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "name": "Tank füllen",
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "name": "Durchschalten",
+                "val": 0
+            },
+            {
+                "type": "relay",
+                "name": "Tank leeren",
+                "val": 1
+            }
+        ]
+    }
+}

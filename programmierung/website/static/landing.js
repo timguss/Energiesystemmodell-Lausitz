@@ -284,27 +284,36 @@ function showNotification(message, type = 'info') {
 // ============================================================================
 
 async function loadScenarios() {
-    const container = document.getElementById('scenarios-container');
-    if (!container) return;
+    const mainContainer = document.getElementById('scenarios-container');
+    const allContainers = document.querySelectorAll('.card-scenarios');
+    
+    if (mainContainer) mainContainer.innerHTML = '';
+    allContainers.forEach(c => c.innerHTML = '');
     
     try {
         const response = await fetch('/api/scenarios');
         if (!response.ok) throw new Error('Failed to load scenarios');
         
         const data = await response.json();
-        container.innerHTML = '';
         
         if (data.scenarios && Object.keys(data.scenarios).length > 0) {
             for (const [key, scenario] of Object.entries(data.scenarios)) {
-                const card = createScenarioCard(key, scenario);
-                container.appendChild(card);
+                const cardBlock = createScenarioCard(key, scenario);
+                let targetEl = mainContainer;
+                
+                if (scenario.target_card) {
+                    const cardEl = document.getElementById(`scenarios-${scenario.target_card}`);
+                    if (cardEl) targetEl = cardEl;
+                }
+                
+                if (targetEl) targetEl.appendChild(cardBlock);
             }
         } else {
-            container.innerHTML = '<div class="loading-spinner">Keine Szenarien verfügbar</div>';
+            if (mainContainer) mainContainer.innerHTML = '<div class="loading-spinner">Keine Szenarien verfügbar</div>';
         }
     } catch (error) {
         console.error('Error loading scenarios:', error);
-        container.innerHTML = '<div class="loading-spinner">Fehler beim Laden</div>';
+        if (mainContainer) mainContainer.innerHTML = '<div class="loading-spinner">Fehler beim Laden</div>';
     }
 }
 
@@ -323,14 +332,24 @@ function createScenarioCard(key, scenario) {
     const buttons = document.createElement('div');
     buttons.className = 'scenario-buttons';
     
-    scenario.states.forEach(state => {
+    // Support new direct sequences (no 'states' array) or legacy 
+    if (scenario.states && scenario.states.length > 0) {
+        scenario.states.forEach(state => {
+            const btn = document.createElement('button');
+            btn.className = 'scenario-state-btn';
+            btn.textContent = state.name;
+            btn.title = state.description || '';
+            btn.onclick = () => executeScenario(key, state.id, state.name, btn);
+            buttons.appendChild(btn);
+        });
+    } else {
         const btn = document.createElement('button');
         btn.className = 'scenario-state-btn';
-        btn.textContent = state.name;
-        btn.title = state.description || '';
-        btn.onclick = () => executeScenario(key, state.id, state.name, btn);
+        btn.textContent = 'Ausführen';
+        btn.title = scenario.description || '';
+        btn.onclick = () => executeScenario(key, 0, scenario.name, btn);
         buttons.appendChild(btn);
-    });
+    }
     
     card.appendChild(header);
     card.appendChild(buttons);
@@ -352,8 +371,16 @@ async function executeScenario(scenarioName, state, stateName, buttonElement) {
             body: JSON.stringify({scenario: scenarioName, state: state})
         });
         
-        if (!response.ok) throw new Error('Request failed');
-        const result = await response.json();
+        let result;
+        try {
+            result = await response.json();
+        } catch(e) {
+            result = {};
+        }
+
+        if (!response.ok) {
+            throw new Error(result.error || 'Request failed');
+        }
         
         if (result.success || result.host_response) {
             buttonElement.textContent = stateName + ' ✓';
@@ -395,7 +422,10 @@ async function executeScenario(scenarioName, state, stateName, buttonElement) {
 
 // CONFIGURATION: Map Relays to Power Stations
 // Change the target container ID to move a relay to a different station.
-// Available IDs: 'coal-controls', 'gas-controls', 'reserve-controls'
+// Available IDs: 
+// 'coal-controls', 'gas-controls', 'electro-controls', 
+// 'lake-controls', 'wind-controls', 'train-controls', 
+// 'reserve-controls'
 const RELAY_MAPPING = {
     esp1: {
         0: 'gas-controls',    // Ventil - 1
@@ -410,24 +440,41 @@ const RELAY_MAPPING = {
     esp2: {
         0: 'coal-controls', // Reserve 1
         1: 'coal-controls', // Reserve 2
-        2: 'reserve-controls', // Reserve 3
-        3: 'reserve-controls'  // Reserve 4
+        2: 'coal-controls', // Reserve 3
+        3: 'coal-controls'  // Reserve 4
+    },
+    esp4: {
+        0: 'electro-controls', // Reserve 1
+        1: 'electro-controls', // Reserve 2
+        2: 'electro-controls', // Reserve 3
+        3: 'electro-controls',  // Reserve 4
+        4: 'electro-controls'  // Reserve 4
+    },
+    esp3: {
+        0: 'lake-controls',
+        1: 'lake-controls',
+        2: 'lake-controls',
+        3: 'lake-controls'
     }
 };
 
 async function loadRelays() {
     // Clear containers
-    const coalContainer = document.getElementById('coal-controls');
-    const gasContainer = document.getElementById('gas-controls');
-    const reserveContainer = document.getElementById('reserve-controls');
+    const containers = [
+        'coal-controls', 'gas-controls', 'electro-controls', 
+        'lake-controls', 'wind-controls', 'train-controls', 'reserve-controls'
+    ];
     
-    if (coalContainer) coalContainer.innerHTML = '';
-    if (gasContainer) gasContainer.innerHTML = '';
-    if (reserveContainer) reserveContainer.innerHTML = '';
+    containers.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<div class="loading-spinner">Lade...</div>';
+    });
     
     await Promise.all([
         loadAndDistributeESP1(),
-        loadAndDistributeESP2()
+        loadAndDistributeESP2(),
+        loadAndDistributeESP3(),
+        loadAndDistributeESP4()
     ]);
 }
 
@@ -457,7 +504,12 @@ async function loadAndDistributeESP1() {
                 
                 // Use Mapping
                 const targetId = RELAY_MAPPING.esp1[i] || 'reserve-controls';
-                document.getElementById(targetId)?.appendChild(item);
+                const targetContainer = document.getElementById(targetId);
+                if (targetContainer) {
+                    const spinner = targetContainer.querySelector('.loading-spinner');
+                    if (spinner) spinner.remove();
+                    targetContainer.appendChild(item);
+                }
             }
         }
     } catch (e) {
@@ -491,11 +543,94 @@ async function loadAndDistributeESP2() {
                 
                 // Use Mapping
                 const targetId = RELAY_MAPPING.esp2[i] || 'reserve-controls';
-                document.getElementById(targetId)?.appendChild(item);
+                const targetContainer = document.getElementById(targetId);
+                if (targetContainer) {
+                    const spinner = targetContainer.querySelector('.loading-spinner');
+                    if (spinner) spinner.remove();
+                    targetContainer.appendChild(item);
+                }
             }
         }
     } catch (e) {
         console.error('Error loading ESP2:', e);
+    }
+}
+
+async function loadAndDistributeESP3() {
+    try {
+        const [metaResp, stateResp] = await Promise.all([
+            fetch('/api/device_meta/esp3'),
+            fetch('/api/device_state/esp3')
+        ]);
+        
+        if (!metaResp.ok || !stateResp.ok) return;
+        
+        const metaData = await metaResp.json();
+        const stateData = await stateResp.json();
+        
+        const meta = metaData.body || metaData;
+        const state = stateData.body || stateData;
+        const isOffline = !!metaData.offline || !!stateData.offline;
+        
+        if (meta && meta.names) {
+            for (let i = 0; i < meta.count; i++) {
+                const globalIdx = 18 + i; // ESP3 starts at 18
+                const name = meta.names[i] || `Relay ${i}`;
+                const val = (state.relays && state.relays[i]) ? state.relays[i] : 0;
+                
+                const item = createRelayItem(globalIdx, name, val, isOffline);
+                
+                // Use Mapping
+                const targetId = (RELAY_MAPPING.esp3 && RELAY_MAPPING.esp3[i]) ? RELAY_MAPPING.esp3[i] : 'reserve-controls';
+                const targetContainer = document.getElementById(targetId);
+                if (targetContainer) {
+                    const spinner = targetContainer.querySelector('.loading-spinner');
+                    if (spinner) spinner.remove();
+                    targetContainer.appendChild(item);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error loading ESP3:', e);
+    }
+}
+
+async function loadAndDistributeESP4() {
+    try {
+        const [metaResp, stateResp] = await Promise.all([
+            fetch('/api/device_meta/esp4'),
+            fetch('/api/device_state/esp4')
+        ]);
+        
+        if (!metaResp.ok || !stateResp.ok) return;
+        
+        const metaData = await metaResp.json();
+        const stateData = await stateResp.json();
+        
+        const meta = metaData.body || metaData;
+        const state = stateData.body || stateData;
+        const isOffline = !!metaData.offline || !!stateData.offline;
+        
+        if (meta && meta.names) {
+            for (let i = 0; i < meta.count; i++) {
+                const globalIdx = 13 + i; // ESP4 starts at 13
+                const name = meta.names[i] || `Relay ${i}`;
+                const val = (state.relays && state.relays[i]) ? state.relays[i] : 0;
+                
+                const item = createRelayItem(globalIdx, name, val, isOffline);
+                
+                // Use Mapping
+                const targetId = (RELAY_MAPPING.esp4 && RELAY_MAPPING.esp4[i]) ? RELAY_MAPPING.esp4[i] : 'reserve-controls';
+                const targetContainer = document.getElementById(targetId);
+                if (targetContainer) {
+                    const spinner = targetContainer.querySelector('.loading-spinner');
+                    if (spinner) spinner.remove();
+                    targetContainer.appendChild(item);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error loading ESP4:', e);
     }
 }
 

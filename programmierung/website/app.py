@@ -62,43 +62,65 @@ def report_status(device, is_online, error_msg=None):
             print(f"[OFFLINE] {device} is missing/unreachable: {error_msg}")
             OFFLINE_DEVICES.add(device)
 
-# Mapping global relay index -> (device, device_idx)
-GLOBAL_MAP = {
-    1: ("esp1", 0),  2: ("esp1", 1),  3: ("esp1", 2),  4: ("esp1", 3),
-    5: ("esp1", 4),  6: ("esp1", 5),  7: ("esp1", 6),  8: ("esp1", 7),
-    9: ("esp2", 0), 10: ("esp2", 1), 11: ("esp2", 2), 12: ("esp2", 3),
-    13: ("esp4", 0), 14: ("esp4", 1), 15: ("esp4", 2), 16: ("esp4", 3), 17: ("esp4", 4),
-    18: ("esp3", 0), 19: ("esp3", 1), 20: ("esp3", 2), 21: ("esp3", 3),
+# Central configuration for all relays across all ESPs
+RELAY_CONFIG = {
+    1: {"device": "esp1", "idx": 0, "name": "Ventil - 1"},
+    2: {"device": "esp1", "idx": 1, "name": "Ventil - 2"},
+    3: {"device": "esp1", "idx": 2, "name": "Heizstab"},
+    4: {"device": "esp1", "idx": 3, "name": "Zünder"},
+    5: {"device": "esp1", "idx": 4, "name": "Gasventil"},
+    6: {"device": "esp1", "idx": 5, "name": "Kühler"},
+    7: {"device": "esp1", "idx": 6, "name": "MFC - Reserve"},
+    8: {"device": "esp1", "idx": 7, "name": "Unbelegt"},
+    
+    9: {"device": "esp2", "idx": 0, "name": "Reserve 1"},
+    10: {"device": "esp2", "idx": 1, "name": "Reserve 2"},
+    11: {"device": "esp2", "idx": 2, "name": "Reserve 3"},
+    12: {"device": "esp2", "idx": 3, "name": "Reserve 4"},
+    
+    13: {"device": "esp4", "idx": 0, "name": "Elekrolyseur"},
+    14: {"device": "esp4", "idx": 1, "name": "Tank leeren"},
+    15: {"device": "esp4", "idx": 2, "name": "Tank füllen"},
+    16: {"device": "esp4", "idx": 3, "name": "Durchschalten"},
+    17: {"device": "esp4", "idx": 4, "name": "Lüfter"},
+    
+    18: {"device": "esp3", "idx": 0, "name": "Relais 2"},
+    19: {"device": "esp3", "idx": 1, "name": "Relais 3"},
+    20: {"device": "esp3", "idx": 2, "name": "Relais 4"},
+    21: {"device": "esp3", "idx": 3, "name": "Relais 5"},
 }
+
+# Compatibility mapping global relay index -> (device, device_idx)
+GLOBAL_MAP = {k: (v["device"], v["idx"]) for k, v in RELAY_CONFIG.items()}
+
+def get_relay_id(identifier):
+    if isinstance(identifier, int):
+        return identifier
+    if isinstance(identifier, str):
+        if identifier.isdigit():
+            return int(identifier)
+        for k, v in RELAY_CONFIG.items():
+            if v["name"].lower() == identifier.lower():
+                return k
+    return None
 
 # ============================================================================
 # VERFÜGBARE SZENARIEN
 # ============================================================================
 
-SCENARIOS = {
-    "kohlekraftwerk": {
-        "name": "Kohlekraftwerk",
-        "states": [
-            {"id": 0, "name": "Aus", "description": "Kohlekraftwerk ausschalten"},
-            {"id": 1, "name": "Ein", "description": "Kohlekraftwerk einschalten"},
-        ]
-    },
-    "test": {
-        "name": "Test-Sequenz",
-        "states": [
-            {"id": 0, "name": "Reset", "description": "Alles ausschalten"},
-            {"id": 1, "name": "Sequenz 1", "description": "Test-Sequenz starten"},
-            {"id": 2, "name": "Sequenz 2", "description": "Alternative Sequenz"},
-        ]
-    },
-    "alles": {
-        "name": "Alle Relays",
-        "states": [
-            {"id": 0, "name": "Alle Aus", "description": "Alle Relays ausschalten"},
-            {"id": 1, "name": "Alle An", "description": "Alle Relays einschalten"},
-        ]
-    }
-}
+import os
+import threading
+
+def load_scenarios():
+    filepath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scenarios.json')
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[ERROR] Loading scenarios.json failed: {e}")
+        return {}
+
+SCENARIOS = load_scenarios()
 
 # ============================================================================
 # HTTP CLIENT FUNCTIONS
@@ -172,7 +194,8 @@ def host_forward(target, method, path, body_str="", timeout=HTTP_TIMEOUT):
 
         # Relay/Motor-Befehle: per /forward an Host senden
         payload = {"target": target, "method": method, "path": path, "body": body_str}
-        resp = host_post("/forward", json.dumps(payload), timeout=timeout)
+        # Use strict separators without spaces so ESP_Host's simple indexOf based parser works
+        resp = host_post("/forward", json.dumps(payload, separators=(',', ':')), timeout=timeout)
         if VERBOSE: print(f"[DEBUG] Forward response RAW: {repr(resp)}")
 
         if isinstance(resp, dict):
@@ -245,19 +268,16 @@ def api_clients():
 def api_device_meta(device):
     if VERBOSE: print(f"\n[INFO] === Request: /api/device_meta/{device} ===")
     
-    # HARDCODED FALLBACKS (wenn ESP offline)
-    fallback_meta = {}
-    if device == "esp1":
-        fallback_meta = {"count": 8, "names": ["Ventil - 1", "Ventil - 2", "Heizstab", "Zünder", "Gasventil", "Kühler", "MFC - Reserve", "Unbelegt"]}
-    elif device == "esp2":
-        fallback_meta = {"count": 4, "names": ["Reserve 1", "Reserve 2", "Reserve 3", "Reserve 4"]}
-    elif device == "esp3":
-        fallback_meta = {"count": 4, "names": ["Relais 2", "Relais 3", "Relais 4", "Relais 5"]}
-    elif device == "esp4":
-        fallback_meta = {
-            "count": 5,
-            "names": ["Relay 1", "Relay 2", "Relay 3", "Relay 4", "Relay 5"]
-        }
+    # FALLBACKS generated from configuration
+    fallback_meta = {"count": 0, "names": []}
+    device_relays = [(k, v) for k, v in RELAY_CONFIG.items() if v["device"] == device]
+    if device_relays:
+        max_idx = max([v["idx"] for k, v in device_relays])
+        fallback_meta["count"] = max_idx + 1
+        names = ["Unbelegt"] * (max_idx + 1)
+        for k, v in device_relays:
+            names[v["idx"]] = v["name"]
+        fallback_meta["names"] = names
     
     try:
         # Cache check
@@ -265,16 +285,13 @@ def api_device_meta(device):
         if device in meta_cache and (now - meta_cache_time.get(device, 0)) < 60:
             return jsonify(meta_cache[device])
         
-        if VERBOSE: print(f"[INFO] Fetching fresh meta for {device}")
-        res = host_forward(device, "GET", "/meta", timeout=10)
-        
-        if res.get("code") == 200:
-            report_status(device, True)
-            meta_cache[device] = res
-            meta_cache_time[device] = now
-            return jsonify(res)
-        else:
-            raise Exception(f"Device returned code {res.get('code')}")
+        if VERBOSE: print(f"[INFO] Using local meta for {device} (ESP-NOW doesn't transmit names)")
+        # We rely on the /state endpoint to determine offline status in the UI
+        # Here we just return the hardcoded names
+        res = {"code": 200, "body": fallback_meta}
+        meta_cache[device] = res
+        meta_cache_time[device] = now
+        return jsonify(res)
 
     except Exception as e:
         report_status(device, False, str(e))
@@ -444,42 +461,77 @@ def api_relay_set():
 
 @app.route("/api/scenarios")
 def api_scenarios():
-    """Liste aller verfügbaren Szenarien (aus lokaler Config)"""
+    """Liste aller verfügbaren Szenarien (aus dynamischer Config)"""
+    global SCENARIOS
+    SCENARIOS = load_scenarios() # Reload on fetch to easily pick up json changes
     return jsonify({"scenarios": SCENARIOS})
 
 @app.route("/api/scenario/execute", methods=["POST"])
 def api_scenario_execute():
-    """Führt ein Szenario aus - wird an ESP-Host weitergeleitet"""
+    """Führt ein Szenario synchron aus, um Fehler sofort ans Frontend zu melden"""
+    global SCENARIOS
+    SCENARIOS = load_scenarios()  # Reload on execute
+    
     j = request.get_json(force=True)
     scenario_name = j.get("scenario")
-    state = int(j.get("state", 0))
-    
-    print(f"[INFO] Executing scenario: {scenario_name}, state: {state}")
     
     if not scenario_name:
         return jsonify({"error": "Kein Szenario angegeben"}), 400
-    
+        
     if scenario_name not in SCENARIOS:
-        return jsonify({"error": f"Unbekanntes Szenario: {scenario_name}"}), 400
+        # Fallback for old hardcoded logic if ESP expects it
+        state = int(j.get("state", 0))
+        print(f"[INFO] Fallback executing legacy scenario: {scenario_name}, state: {state}")
+        try:
+            path = f"/scenario?name={scenario_name}&state={state}"
+            result = host_get(path, timeout=10)
+            return jsonify({"success": True, "scenario": scenario_name, "state": state, "host_response": result})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 502
+            
+    scenario_data = SCENARIOS[scenario_name]
+    actions = scenario_data.get("actions", [])
     
-    try:
-        path = f"/scenario?name={scenario_name}&state={state}"
-        result = host_get(path, timeout=10)
-        
-        return jsonify({
-            "success": True,
-            "scenario": scenario_name,
-            "state": state,
-            "host_response": result
-        })
-        
-    except Exception as e:
-        print(f"[ERROR] Scenario execution failed: {str(e)}")
-        return jsonify({
-            "error": str(e),
-            "scenario": scenario_name,
-            "state": state
-        }), 502
+    print(f"[INFO] Scenario started: {scenario_name}")
+    for idx, action in enumerate(actions):
+        try:
+            atype = action.get("type")
+            if atype == "delay":
+                ms = int(action.get("ms", 1000))
+                time.sleep(ms / 1000.0)
+            elif atype == "relay":
+                identifier = action.get("name") or action.get("relay") or action.get("global_idx")
+                gi = get_relay_id(identifier)
+                
+                if gi is not None:
+                    val = 1 if int(action.get("val")) else 0
+                    if gi in GLOBAL_MAP:
+                        device, dev_idx = GLOBAL_MAP[gi]
+                        path = f"/set?idx={dev_idx}&val={val}"
+                        print(f"[SCENARIO] Relay cmd -> {device} {path}")
+                        host_forward(device, "GET", path, timeout=10)
+                else:
+                    raise Exception(f"Relay mapping not found for '{identifier}'.")
+            elif atype == "wind":
+                val = 1 if int(action.get("val", 0)) else 0
+                print(f"[SCENARIO] Wind cmd -> {val}")
+                host_forward("esp3", "GET", f"/set?val={val}", timeout=10)
+            elif atype == "train":
+                pwm = int(action.get("pwm", 0))
+                dir_val = int(action.get("dir", 1))
+                print(f"[SCENARIO] Train cmd -> pwm={pwm} dir={dir_val}")
+                host_forward("esp3", "GET", f"/train?pwm={pwm}&dir={dir_val}", timeout=10)
+        except Exception as e:
+            err_msg = f"Failed at action {idx}: {e}"
+            print(f"[ERROR] Scenario {scenario_name} {err_msg}")
+            return jsonify({"error": err_msg, "scenario": scenario_name}), 502
+            
+    print(f"[INFO] Scenario {scenario_name} completed.")
+    return jsonify({
+        "success": True,
+        "scenario": scenario_name,
+        "actions_count": len(actions)
+    })
 
 # RS232 endpoint
 @app.route("/api/rs232", methods=["POST"])
