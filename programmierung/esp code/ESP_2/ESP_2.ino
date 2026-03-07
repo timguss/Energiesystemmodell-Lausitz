@@ -1,216 +1,161 @@
-// ESP2 mit HTTP-API und Temperaturmessung
+/*
+ * ESP2 — 4x Relay + Temperatur (NTC)
+ * Kommunikation: ESP-NOW (kein WiFi-Stack nötig)
+ *
+ * Beim ersten Start: Serial Monitor öffnen und die Zeile
+ * "ESP-NOW MAC: AA:BB:CC:DD:EE:FF" ablesen → in ESP_Host.ino eintragen!
+ */
+
 #include <WiFi.h>
-#include <WebServer.h>
-#include <HTTPClient.h>
+#include <esp_now.h>
 #include <math.h>
 
-// ===== WiFi & Network =====
-const char* WIFI_SSID = "ESP-HOST";
-const char* WIFI_PASS = "espHostPass";
-const IPAddress HOST_IP(192,168,4,1);
+// ============================================================================
+// RELAY KONFIGURATION
+// ============================================================================
+const int relayPins[]       = {26, 25, 33, 32};
+const char* relayNames[]    = {"Relay 1", "Relay 2", "Relay 3", "Relay 4"};
+const int   RELAY_COUNT     = 4;
 
-// ===== Relais =====
-const int relays[] = {26, 25, 33, 32};
-const int relayCount = 4;
-const char* relayNames[] = {"unbelegt0", "unbelegt1", "unbelegt2", "unbelegt3"};
-
-// ===== Temperaturmessung =====
-const int adcPin = 34;  // ADC Pin für NTC
-const float Vcc = 3.3;
-const float Rf = 10000.0;      // Vorwiderstand in Ohm
-const float R0 = 10000.0;      // NTC Widerstand bei 25°C
-const float T0_K = 298.15;     // 25°C in Kelvin
-const float beta = 3950.0;     // Beta-Koeffizient des NTC
-
-float cachedTempC = NAN;
-float cachedRntc = NAN;
-unsigned long lastTempMillis = 0;
-const unsigned long TEMP_INTERVAL = 1000;  // Alle 1 Sekunde messen
-
-// ===== Webserver =====
-WebServer server(80);
-
-// ===== Temperatur-Funktionen =====
-float readVoltage() {
-  int adc = analogRead(adcPin);
-  return (float)adc / 4095.0 * Vcc;
+// Aktive-LOW Relays
+void setRelay(int idx, int val) {
+  if (idx < 0 || idx >= RELAY_COUNT) return;
+  digitalWrite(relayPins[idx], val ? LOW : HIGH);
 }
+int getRelay(int idx) {
+  if (idx < 0 || idx >= RELAY_COUNT) return 0;
+  return digitalRead(relayPins[idx]) == LOW ? 1 : 0;
+}
+
+// ============================================================================
+// TEMPERATUR (NTC)
+// ============================================================================
+const int   adcPin = 34;
+const float Vcc = 3.3, Rf = 10000.0, R0 = 10000.0, T0_K = 298.15, beta = 3950.0;
+float cachedTempC = NAN, cachedRntc = NAN;
+unsigned long lastTempMillis = 0;
 
 float readR_NTC() {
-  float v = readVoltage();
-  if(v <= 0.0001) return 1e9;
-  if(v >= Vcc - 0.0001) return 1e-6;
+  float v = (analogRead(adcPin) / 4095.0f) * Vcc;
+  if (v <= 0.0001f) return 1e9f;
+  if (v >= Vcc - 0.0001f) return 1e-6f;
   return Rf * (v / (Vcc - v));
 }
+float ntcToCelsius(float R) { return 1.0f / ((1.0f/T0_K) + (1.0f/beta)*logf(R/R0)) - 273.15f; }
 
-float ntcToCelsius(float Rntc) {
-  float invT = (1.0 / T0_K) + (1.0 / beta) * log(Rntc / R0);
-  return 1.0 / invT - 273.15;
+// ============================================================================
+// ESP-NOW STRUKTUREN
+// ============================================================================
+typedef struct __attribute__((packed)) {
+  char    cmd[12];
+  int16_t idx;
+  int16_t val;
+  int16_t extra;
+} CmdMsg;
+
+typedef struct __attribute__((packed)) {
+  char    device[8];
+  int16_t relays[8];
+  float   sensors[5];
+  float   temp;
+  float   flow;
+  int16_t pwm;
+  int8_t  forward;
+  int8_t  running;
+  int8_t  relay_count;
+  int8_t  sensor_count;
+} StatusMsg;
+
+// ============================================================================
+// STATUS SENDEN
+// ============================================================================
+uint8_t BROADCAST[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
+
+void sendStatus() {
+  StatusMsg msg;
+  memset(&msg, 0, sizeof(msg));
+  strlcpy(msg.device, "esp2", sizeof(msg.device));
+  msg.relay_count  = RELAY_COUNT;
+  msg.sensor_count = 0;
+  for (int i = 0; i < RELAY_COUNT; i++)
+    msg.relays[i] = getRelay(i);
+  msg.temp = cachedTempC;
+
+  esp_now_send(BROADCAST, (uint8_t*)&msg, sizeof(msg));
 }
 
-// ===== Relay Helper =====
-void setRelay(int index, bool state) {
-  if (index >= 0 && index < relayCount) {
-    digitalWrite(relays[index], state ? LOW : HIGH);
+// ============================================================================
+// BEFEHLE EMPFANGEN
+// ============================================================================
+void onReceive(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+  if (len != sizeof(CmdMsg)) return;
+  CmdMsg msg;
+  memcpy(&msg, data, sizeof(msg));
+
+  if (strcmp(msg.cmd, "RELAY") == 0) {
+    setRelay(msg.idx, msg.val);
+    Serial.printf("Relay %d (%s) → %s\n", msg.idx, relayNames[msg.idx], msg.val ? "AN" : "AUS");
+    sendStatus();
   }
 }
 
-int getRelay(int index) {
-  if (index >= 0 && index < relayCount) {
-    return digitalRead(relays[index]) == LOW ? 1 : 0;
-  }
-  return 0;
-}
-
-// ===== HTTP Handlers =====
-
-// GET /state -> {"r0":0,"r1":1,"r2":0,"r3":0,"temp":23.45,"rntc":10234}
-void handleState() {
-  String s = "{";
-  for(int i = 0; i < relayCount; i++) {
-    s += "\"r" + String(i) + "\":" + String(getRelay(i));
-    s += ",";
-  }
-  // Füge Temperaturdaten hinzu
-  s += "\"temp\":" + (isnan(cachedTempC) ? "null" : String(cachedTempC, 2)) + ",";
-  s += "\"rntc\":" + (isnan(cachedRntc) ? "null" : String(cachedRntc, 0));
-  s += "}";
-  server.send(200, "application/json", s);
-}
-
-// GET /set?idx=0&val=1
-void handleSet() {
-  if(!server.hasArg("idx") || !server.hasArg("val")) {
-    server.send(400, "text/plain", "missing args");
-    return;
-  }
-  int idx = server.arg("idx").toInt();
-  int val = server.arg("val").toInt();
-  
-  if(idx < 0 || idx >= relayCount || (val != 0 && val != 1)) {
-    server.send(400, "text/plain", "invalid args");
-    return;
-  }
-  
-  setRelay(idx, val == 1);
-  Serial.printf("Relay %d (%s) -> %s\n", idx, relayNames[idx], (val == 1) ? "AN" : "AUS");
-  server.send(200, "text/plain", "ok");
-}
-
-// GET /meta -> {"count":4,"names":["unbelegt0",...]}
-void handleMeta() {
-  String s = "{\"count\":" + String(relayCount) + ",\"names\":[";
-  for(int i = 0; i < relayCount; i++) {
-    s += "\"" + String(relayNames[i]) + "\"";
-    if(i < relayCount - 1) s += ",";
-  }
-  s += "]}";
-  server.send(200, "application/json", s);
-}
-
-// GET /temp -> {"temp":23.45,"rntc":10234}
-void handleTemp() {
-  String j = "{\"temp\":" + (isnan(cachedTempC) ? "null" : String(cachedTempC, 2)) +
-             ",\"rntc\":" + (isnan(cachedRntc) ? "null" : String(cachedRntc, 0)) + "}";
-  server.send(200, "application/json", j);
-}
-
-// ===== Host Registration =====
-void registerAtHost() {
-  if(WiFi.status() != WL_CONNECTED) return;
-  
-  HTTPClient http;
-  String url = String("http://") + HOST_IP.toString() + "/register";
-  http.begin(url);
-  http.addHeader("Content-Type", "application/json");
-  http.setTimeout(500);
-  String payload = "{\"name\":\"esp2\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
-  http.POST(payload);
-  http.end();
-}
-
-// ===== WiFi Events =====
-void onWiFiEvent(WiFiEvent_t event, WiFiEventInfo_t info) {
-  if(event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-    registerAtHost();
-  } else if(event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
-    Serial.println("WiFi getrennt, reconnect...");
-    WiFi.reconnect();
-  }
-}
-
-// ===== Setup =====
+// ============================================================================
+// SETUP
+// ============================================================================
 void setup() {
   Serial.begin(115200);
-  delay(500);
-  Serial.println("\n\nESP2 startet...");
-  
-  // Relais initialisieren (aktive LOW: HIGH = AUS)
-  for (int i = 0; i < relayCount; i++) {
-    pinMode(relays[i], OUTPUT);
-    digitalWrite(relays[i], HIGH);
-    Serial.printf("Relay %d (%s) auf Pin %d\n", i, relayNames[i], relays[i]);
+  delay(200);
+
+  // Relais initialisieren — alle AUS (Active LOW → HIGH)
+  for (int i = 0; i < RELAY_COUNT; i++) {
+    pinMode(relayPins[i], OUTPUT);
+    digitalWrite(relayPins[i], HIGH);
   }
-  
-  // ADC initialisieren
+
+  // ADC
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
-  Serial.println("ADC initialisiert für Temperaturmessung");
-  
-  // WiFi
-  WiFi.onEvent(onWiFiEvent);
+
+  // ESP-NOW
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  
-  Serial.print("Verbinde mit ");
-  Serial.print(WIFI_SSID);
-  unsigned long start = millis();
-  while(WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
-    delay(500);
-    Serial.print(".");
+
+  Serial.print("ESP-NOW MAC: ");
+  Serial.println(WiFi.macAddress());
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("[ESP-NOW] Init fehlgeschlagen!");
+    return;
   }
-  Serial.println();
-  
-  if(WiFi.status() == WL_CONNECTED) {
-    Serial.println("WiFi verbunden!");
-    registerAtHost();
-  }
-  
-  // HTTP Server
-  server.on("/state", HTTP_GET, handleState);
-  server.on("/set", HTTP_GET, handleSet);
-  server.on("/meta", HTTP_GET, handleMeta);
-  server.on("/temp", HTTP_GET, handleTemp);
-  server.begin();
-  Serial.println("HTTP Server gestartet");
-  
-  Serial.println("\nESP2 bereit!");
-  Serial.println("HTTP-API: /state, /set, /meta, /temp");
+  esp_now_register_recv_cb(onReceive);
+
+  // Broadcast-Peer für Status-Meldungen an Host
+  esp_now_peer_info_t peer = {};
+  memcpy(peer.peer_addr, BROADCAST, 6);
+  peer.channel = 1;
+  peer.encrypt = false;
+  esp_now_add_peer(&peer);
+
+  Serial.println("ESP2 bereit (ESP-NOW)");
 }
 
-// ===== Loop =====
+// ============================================================================
+// LOOP
+// ============================================================================
 void loop() {
-  server.handleClient();
-  
   unsigned long now = millis();
-  
-  // Temperatur alle 1 Sekunde messen
-  if(now - lastTempMillis >= TEMP_INTERVAL) {
+
+  // Temperatur alle 1 Sekunde
+  if (now - lastTempMillis >= 1000) {
     lastTempMillis = now;
-    float Rntc = readR_NTC();
-    float tempC = ntcToCelsius(Rntc);
-    cachedTempC = tempC;
-    cachedRntc = Rntc;
-    Serial.printf("ESP2 Temp: %.2f °C | R: %.0f Ω\n", tempC, Rntc);
+    cachedRntc  = readR_NTC();
+    cachedTempC = ntcToCelsius(cachedRntc);
   }
-  
-  // Host-Registrierung alle 60 Sekunden
-  static unsigned long lastReg = 0;
-  if(now - lastReg > 60000) {
-    lastReg = now;
-    registerAtHost();
+
+  // Heartbeat alle 2 Sekunden
+  static unsigned long lastHeartbeat = 0;
+  if (now - lastHeartbeat >= 2000) {
+    lastHeartbeat = now;
+    sendStatus();
   }
 }

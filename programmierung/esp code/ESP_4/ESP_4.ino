@@ -1,291 +1,199 @@
-// ESP4_api.ino
+/*
+ * ESP4 — 5x Relay + 5x Stromsensor (4-20mA) + Flowmeter
+ * Kommunikation: ESP-NOW (kein WiFi-Stack nötig)
+ *
+ * Beim ersten Start: Serial Monitor öffnen und die Zeile
+ * "ESP-NOW MAC: AA:BB:CC:DD:EE:FF" ablesen → in ESP_Host.ino eintragen!
+ */
+
 #include <WiFi.h>
-#include <WebServer.h>
-#include <HTTPClient.h>
+#include <esp_now.h>
 
-// -------------------- RELAIS --------------------
-const bool ACTIVE_LOW = true;
-
-struct RelayConfig {
-  uint8_t pin;
-  const char* name;
-  bool activeLow;
-};
-
+// ============================================================================
+// RELAY KONFIGURATION
+// ============================================================================
+struct RelayConfig { uint8_t pin; const char* name; bool activeLow; };
 const uint8_t RELAY_COUNT = 5;
-
 RelayConfig RELAYS[RELAY_COUNT] = {
-  {18, "Elektrolyseur", false}, // First relay reversed (High Trigger)
-  {19, "Außen Relay", true},    // Others stay Active Low
-  {21, "Mitte Relay", true},
-  {22, "Innen Relay", true},
-  {23, "Lüfter", true},
+  {18, "Elektrolyseur", false}, // High-Trigger
+  {19, "Außen Relay",   true},
+  {21, "Mitte Relay",   true},
+  {22, "Innen Relay",   true},
+  {23, "Lüfter",        true},
 };
 
-float currents[5];
-float pressures[5];
-int relayState[RELAY_COUNT];
-bool hostConnected = false;
+inline int logicalToPhys(int v, bool al) { return al ? (v ? LOW : HIGH) : (v ? HIGH : LOW); }
+inline int physToLogical(int v, bool al) { return al ? (v == LOW ? 1 : 0) : (v == HIGH ? 1 : 0); }
 
-// -------------------- WIFI --------------------
-const char* WIFI_SSID = "ESP-HOST";
-const char* WIFI_PASS = "espHostPass";
+void applySafeDefaults() {
+  for (int i = 0; i < RELAY_COUNT; i++)
+    digitalWrite(RELAYS[i].pin, logicalToPhys(0, RELAYS[i].activeLow));
+}
 
-// -------------------- FLOWMETER KONFIG --------------------
+// ============================================================================
+// SENSOREN (4–20mA, Shunt 165Ω)
+// ============================================================================
+const int   SENSOR_PINS[5]  = {36, 39, 34, 35, 32};
+const float SHUNT_RESISTOR  = 165.0f;
+float currentValues[5]      = {0};
+
+void readSensors() {
+  for (int i = 0; i < 5; i++) {
+    float voltage    = (analogRead(SENSOR_PINS[i]) / 4095.0f) * 3.3f;
+    currentValues[i] = (voltage / SHUNT_RESISTOR) * 1000.0f; // mA
+  }
+}
+
+// ============================================================================
+// FLOWMETER
+// ============================================================================
 #define FLOW_PIN 17
-float K_FACTOR = 1.0; // Kalibrierung: Pulse pro Liter
+float    K_FACTOR         = 1.0f; // Pulse pro Liter
 volatile uint32_t pulseCount = 0;
-float flow_L_per_min = 0;
+float    flow_L_per_min   = 0.0f;
 unsigned long lastFlowMillis = 0;
 
-void IRAM_ATTR onPulse() {
-  pulseCount++;
-}
+void IRAM_ATTR onPulse() { pulseCount++; }
 
-// -------------------- SENSOR KONFIG --------------------
-// 5x 4–20mA Sensoren 
-const int SENSOR_PINS[5] = {36,39,34,35, 32};   // nur ADC Pins!
-const float SHUNT_RESISTOR = 165.0;
-
-
-// -------------------- SERVER --------------------
-WebServer server(80);
-
-float currentValues[5];
-
-// ------------------------------------------------
-
-inline int physToLogical(int physVal, bool activeLow){
-  return activeLow ? (physVal==LOW?1:0) : (physVal==HIGH?1:0);
-}
-
-inline int logicalToPhys(int logical, bool activeLow){
-  return activeLow ? (logical==1?LOW:HIGH) : (logical==1?HIGH:LOW);
-}
-
-// -------------------- SENSOR LESEN --------------------
-void readSensors() {
-  // 1. Druck/Strom Sensoren (Nur noch mA berechnen)
-  for(int i=0;i<5;i++){
-    int rawADC = analogRead(SENSOR_PINS[i]);
-    float voltage = (rawADC / 4095.0) * 3.3;
-    float current_mA = (voltage / SHUNT_RESISTOR) * 1000.0;
-    
-    currentValues[i] = current_mA;
-  }
-
-  // 2. Flowmeter (alle 1s berechnen)
+void updateFlow() {
   unsigned long now = millis();
   if (now - lastFlowMillis >= 1000) {
-    uint32_t duration = now - lastFlowMillis;
+    uint32_t dur = now - lastFlowMillis;
     lastFlowMillis = now;
-    
     noInterrupts();
-    uint32_t pulses = pulseCount;
-    pulseCount = 0;
+    uint32_t p = pulseCount;
+    pulseCount  = 0;
     interrupts();
-
-    float pulsesPerSecond = pulses / (duration / 1000.0);
-    flow_L_per_min = (pulsesPerSecond * 60.0) / K_FACTOR;
+    flow_L_per_min = (p / (dur / 1000.0f) * 60.0f) / K_FACTOR;
   }
 }
 
-// -------------------- JSON STATE --------------------
-// -------------------- JSON STATE --------------------
-void handleState(){
-  // Wir lesen die Sensoren nicht mehr hier (wird im Loop gemacht), 
-  // um die Antwortzeit zu minimieren.
-  
-  String s;
-  s.reserve(400); // Speicher reservieren um Fragmentierung zu vermeiden
-  s = "{";
+// ============================================================================
+// ESP-NOW STRUKTUREN
+// ============================================================================
+typedef struct __attribute__((packed)) {
+  char    cmd[12];
+  int16_t idx;
+  int16_t val;
+  int16_t extra;
+} CmdMsg;
 
-  // Sensoren
-  s += "\"sensors\":[";
-  for(int i=0;i<5;i++){
-    // The ESP now only sends the raw current, setting pressure to 0 so the property remains 
-    // consistently typed for the frontend until the backend intercepts it.
-    s += "{\"current\":" + String(currentValues[i], 2) + ",\"pressure\":0.00}";
-    if(i<4) s += ",";
-  }
-  s += "],";
+typedef struct __attribute__((packed)) {
+  char    device[8];
+  int16_t relays[8];
+  float   sensors[5];
+  float   temp;
+  float   flow;
+  int16_t pwm;
+  int8_t  forward;
+  int8_t  running;
+  int8_t  relay_count;
+  int8_t  sensor_count;
+} StatusMsg;
 
-  // Relais
-  s += "\"relays\":[";
-  for(int i=0;i<RELAY_COUNT;i++){
-    s += String(physToLogical(digitalRead(RELAYS[i].pin), RELAYS[i].activeLow));
-    if(i<RELAY_COUNT-1) s += ",";
-  }
-  s += "]";
+uint8_t BROADCAST[6] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 
-  // Flowmeter
-  s += ",\"flow\":" + String(flow_L_per_min, 1);
-  s += "}";
+// ============================================================================
+// STATUS SENDEN
+// ============================================================================
+void sendStatus() {
+  StatusMsg msg;
+  memset(&msg, 0, sizeof(msg));
+  strlcpy(msg.device, "esp4", sizeof(msg.device));
+  msg.relay_count  = RELAY_COUNT;
+  msg.sensor_count = 5;
+  for (int i = 0; i < RELAY_COUNT; i++)
+    msg.relays[i] = physToLogical(digitalRead(RELAYS[i].pin), RELAYS[i].activeLow);
+  for (int i = 0; i < 5; i++)
+    msg.sensors[i] = currentValues[i];
+  msg.flow = flow_L_per_min;
+  msg.temp = NAN;
 
-  server.send(200, "application/json", s);
+  esp_now_send(BROADCAST, (uint8_t*)&msg, sizeof(msg));
 }
 
-// -------------------- RELAIS SETZEN --------------------
-void handleSet(){
+// ============================================================================
+// BEFEHLE EMPFANGEN
+// ============================================================================
+void onReceive(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+  if (len != sizeof(CmdMsg)) return;
+  CmdMsg msg;
+  memcpy(&msg, data, sizeof(msg));
 
-  if(!server.hasArg("idx") || !server.hasArg("val")){
-    server.send(400,"text/plain","missing args");
-    return;
-  }
-
-  int idx = server.arg("idx").toInt();
-  int val = server.arg("val").toInt();
-
-  if(idx<0 || idx>=RELAY_COUNT){
-    server.send(400,"text/plain","invalid idx");
-    return;
-  }
-
-  digitalWrite(RELAYS[idx].pin, logicalToPhys(val, RELAYS[idx].activeLow));
-  relayState[idx] = val;
-  server.send(200,"application/json","{\"ok\":true,\"idx\":" + String(idx) + ",\"val\":" + String(val) + "}");
-}
-
-// -------------------- META --------------------
-void handleMeta(){
-  String s = "{\"count\":" + String(RELAY_COUNT) + ",\"names\":[";
-  for(int i=0; i<RELAY_COUNT; i++){
-    s += "\"" + String(RELAYS[i].name) + "\"";
-    if(i < RELAY_COUNT - 1) s += ",";
-  }
-  s += "]}";
-  server.send(200,"application/json", s);
-}
-
-void printStatus() {
-  // Nur noch eine Zeile für weniger Blocking
-  Serial.printf("ESP4 Stats: Flow: %.1f L/min | I[0]: %.2f mA | I[4]: %.2f mA\n", 
-                flow_L_per_min, currentValues[0], currentValues[4]);
-}
-
-// -------------------- HOST REG --------------------
-void registerWithHost() {
-  if (WiFi.status() != WL_CONNECTED) return;
-
-  HTTPClient http;
-  http.begin("http://192.168.4.1/register");
-  http.addHeader("Content-Type", "application/json");
-  http.setTimeout(1000); // 1s timeout for registration to be safe
-
-  String payload = "{\"name\":\"esp4\",\"ip\":\"" + WiFi.localIP().toString() + "\"}";
-  int httpCode = http.POST(payload);
-
-  if (httpCode == 200) {
-    if (!hostConnected) {
-      Serial.println("ESP4 erfolgreich mit Host verbunden.");
+  if (strcmp(msg.cmd, "RELAY") == 0) {
+    int idx = msg.idx, val = msg.val;
+    if (idx >= 0 && idx < RELAY_COUNT) {
+      digitalWrite(RELAYS[idx].pin, logicalToPhys(val, RELAYS[idx].activeLow));
+      Serial.printf("Relay %d (%s) → %s\n", idx, RELAYS[idx].name, val ? "AN" : "AUS");
+      sendStatus();
     }
-    hostConnected = true;
-  } else {
-    if (hostConnected) {
-      Serial.println("Verbindung zum Host verloren!");
-    }
-    hostConnected = false;
-  }
-
-  http.end();
-}
-
-// -------------------- WIFI EVENTS --------------------
-void applySafeRelayDefaults() {
-  for (int i = 0; i < RELAY_COUNT; i++) {
-    relayState[i] = 0;
-    digitalWrite(RELAYS[i].pin, logicalToPhys(0, RELAYS[i].activeLow));
   }
 }
 
-void WiFiEvent(WiFiEvent_t event) {
-  switch(event) {
-    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-      Serial.print("WiFi connected! IP address: ");
-      Serial.println(WiFi.localIP());
-      registerWithHost();
-      // Enforce safe baseline: all relays OFF after each successful (re)connect
-      applySafeRelayDefaults();
-      break;
-    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-      Serial.println("WiFi lost connection. Auto-Reconnect will attempt to fix.");
-      hostConnected = false;
-      break;
-    default:
-      break;
-  }
-}
-
-// -------------------- SETUP --------------------
-void setup(){
-
+// ============================================================================
+// SETUP
+// ============================================================================
+void setup() {
   Serial.begin(115200);
+  delay(200);
 
   analogReadResolution(12);
   analogSetAttenuation(ADC_11db);
 
-  // Flowmeter init
+  // Flowmeter
   pinMode(FLOW_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(FLOW_PIN), onPulse, FALLING);
+  lastFlowMillis = millis();
 
-  // Relais init
-  for(int i=0;i<RELAY_COUNT;i++){
+  // Relais — sichere Defaults sofort setzen
+  for (int i = 0; i < RELAY_COUNT; i++)
     pinMode(RELAYS[i].pin, OUTPUT);
-  }
-  // Enforce a known safe baseline once pins are outputs
-  applySafeRelayDefaults();
+  applySafeDefaults();
 
+  // ESP-NOW
   WiFi.mode(WIFI_STA);
-  WiFi.onEvent(WiFiEvent);
   WiFi.setSleep(false);
-  // Reduce TX power to lower peak current draw when WiFi is active alongside relays
-  WiFi.setTxPower(WIFI_POWER_15dBm);
-  WiFi.setAutoReconnect(true);         // Crucial for background reconnects
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  Serial.print("Connecting to WiFi");
-  unsigned long wifiStart = millis();
-  while(WiFi.status()!=WL_CONNECTED && millis() - wifiStart < 10000){
-    delay(500);
-    Serial.print(".");
+  Serial.print("ESP-NOW MAC: ");
+  Serial.println(WiFi.macAddress());
+
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("[ESP-NOW] Init fehlgeschlagen!");
+    return;
   }
-  Serial.println();
+  esp_now_register_recv_cb(onReceive);
 
-  server.on("/state", HTTP_GET, handleState);
-  server.on("/set", HTTP_GET, handleSet);
-  server.on("/meta", HTTP_GET, handleMeta);
+  // Broadcast-Peer
+  esp_now_peer_info_t peer = {};
+  memcpy(peer.peer_addr, BROADCAST, 6);
+  peer.channel = 1;
+  peer.encrypt = false;
+  esp_now_add_peer(&peer);
 
-  server.begin();
+  Serial.println("ESP4 bereit (ESP-NOW)");
 }
 
-// -------------------- LOOP --------------------
+// ============================================================================
+// LOOP
+// ============================================================================
 unsigned long lastSensorRead = 0;
-unsigned long lastPrint = 0;
-unsigned long lastCheck = 0;
+unsigned long lastHeartbeat  = 0;
 
 void loop() {
-  server.handleClient();
-
   unsigned long now = millis();
 
-  // Sensoren alle 500ms im Hintergrund lesen
-  if (now - lastSensorRead > 200) {
-    readSensors();
+  // Sensoren alle 200ms
+  if (now - lastSensorRead >= 200) {
     lastSensorRead = now;
+    readSensors();
+    updateFlow();
   }
 
-  // Status alle 5 Sekunden (seltener)
-  if (now - lastPrint > 5000) {
-    printStatus();
-    lastPrint = now;
-  }
-
-  // Heartbeat: Re-register with host every 60 seconds if connected.
-  // We NO LONGER call WiFi.begin() here, because it conflicts with setAutoReconnect(true).
-  if (now - lastCheck > 60000) {
-    if (WiFi.status() == WL_CONNECTED) {
-      registerWithHost();
-    }
-    lastCheck = now;
+  // Heartbeat alle 2 Sekunden
+  if (now - lastHeartbeat >= 2000) {
+    lastHeartbeat = now;
+    sendStatus();
+    Serial.printf("Flow: %.1f L/min | I[0]: %.2f mA | I[4]: %.2f mA\n",
+                  flow_L_per_min, currentValues[0], currentValues[4]);
   }
 }

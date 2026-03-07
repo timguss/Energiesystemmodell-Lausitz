@@ -153,74 +153,41 @@ def host_post(path, data=None, timeout=HTTP_TIMEOUT):
         raise Exception(f"Verbindungsfehler: {str(e)}")
 
 def host_forward(target, method, path, body_str="", timeout=HTTP_TIMEOUT):
-    """Forward request through Host-ESP to target device"""
+    """
+    Mit ESP-NOW:
+    - GET /state  → liest vom Host-Cache: GET /state/<target>
+    - GET /meta   → liest vom Host-Cache: GET /state/<target> (Meta ist eingebettet)
+    - GET /set    → sendet Befehl über Host: POST /forward
+    - andere      → POST /forward wie bisher
+    """
     if VERBOSE: print(f"[DEBUG] Forward to {target}: {method} {path}")
-    payload = {"target": target, "method": method, "path": path, "body": body_str}
-    
+
     try:
+        # State-Abfragen: direkt aus Host-Cache lesen (ESP-NOW Push)
+        if method == "GET" and path == "/state":
+            resp = host_get(f"/state/{target}", timeout=timeout)
+            if isinstance(resp, dict):
+                return resp  # Host gibt bereits {code:200, body:{...}} zurück
+            return {"code": 200, "body": resp}
+
+        # Relay/Motor-Befehle: per /forward an Host senden
+        payload = {"target": target, "method": method, "path": path, "body": body_str}
         resp = host_post("/forward", json.dumps(payload), timeout=timeout)
         if VERBOSE: print(f"[DEBUG] Forward response RAW: {repr(resp)}")
 
-        # Agent instrumentation: log low-level forward result for esp4 interactions (H1/H2)
-        try:
-            if target == "esp4":
-                code_val = None
-                body_preview = None
-                if isinstance(resp, dict):
-                    code_val = resp.get("code", None)
-                    body_val = resp.get("body", "")
-                    # keep body preview short to avoid large logs
-                    if isinstance(body_val, str):
-                        body_preview = body_val[:120]
-                    else:
-                        try:
-                            body_preview = json.dumps(body_val)[:120]
-                        except Exception:
-                            body_preview = str(body_val)[:120]
-                agent_log(
-                    run_id="pre-fix",
-                    hypothesis_id="H1",
-                    location="app.py:host_forward",
-                    message="host_forward esp4 result",
-                    data={
-                        "target": target,
-                        "method": method,
-                        "path": path,
-                        "code": code_val,
-                        "body_preview": body_preview,
-                        "raw_type": type(resp).__name__,
-                    },
-                )
-        except Exception:
-            pass
-        
-        # resp expected {"code":int, "body":"..."} where body may be a JSON string
         if isinstance(resp, dict):
             code = resp.get("code", -1)
             body = resp.get("body", "")
-            
-            if code != 200:
-                if VERBOSE: print(f"[WARNING] Forward to {target} returned non-200 code: {code}")
-            
-            # Wenn body ein String ist, versuche ihn als JSON zu parsen
-            if isinstance(body, str):
-                if body.strip():  # Nur parsen wenn nicht leer
-                    try:
-                        parsed = json.loads(body)
-                        if VERBOSE: print(f"[DEBUG] Body parsed as JSON: {parsed}")
-                        return {"code": code, "body": parsed}
-                    except json.JSONDecodeError as e:
-                        if VERBOSE: print(f"[DEBUG] Body is not valid JSON ({e}), returning as string")
-                        return {"code": code, "body": body}
-                else:
-                    return {"code": code, "body": ""}
-            else:
-                return {"code": code, "body": body}
-        
+            if isinstance(body, str) and body.strip():
+                try:
+                    return {"code": code, "body": json.loads(body)}
+                except json.JSONDecodeError:
+                    pass
+            return {"code": code, "body": body}
+
         return {"code": -1, "body": str(resp)}
     except Exception as e:
-        # We don't log here because the caller (api route) handles it with report_status
-        raise e # Re-raise to trigger fallback in caller
+        raise e
 
 # ============================================================================
 # FLASK APP

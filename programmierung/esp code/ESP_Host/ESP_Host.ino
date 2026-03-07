@@ -1,452 +1,364 @@
 /*
- * ESP-Host mit Scenario-Support (ESP32 Version) - FIXED
- * 
- * Funktionen:
- * - WiFi Access Point
- * - Web Server mit /forward Endpoint
- * - Client Management (esp1, esp2, esp3)
- * - Scenario Execution (/scenario?name=X&state=Y)
- * 
- * Hardware: ESP32 Dev Module
+ * ESP_Host — ESP-NOW Gateway + WiFi AP für Raspberry Pi
+ *
+ * Kommunikation:
+ *   - Raspberry Pi  →  HTTP (WiFi AP, unverändert)
+ *   - ESP1–ESP4    →  ESP-NOW (direkt, kein TCP/IP)
+ *
+ * SETUP (einmalig):
+ *   1. Flashe jeden ESP1–4 und lese im Serial Monitor die Zeile:
+ *      "ESP-NOW MAC: AA:BB:CC:DD:EE:FF"
+ *   2. Trage die MACs unten in MAC_ESP1 bis MAC_ESP4 ein.
+ *   3. Flashe diesen Host-Code.
  */
 
 #include <WiFi.h>
 #include <WebServer.h>
-#include <HTTPClient.h>
+#include <esp_now.h>
 
 // ============================================================================
-// CONFIGURATION
+// MAC-ADRESSEN DER CLIENTS — hier eintragen nach erstem Flashen!
 // ============================================================================
+uint8_t MAC_ESP1[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // TODO: ersetzen
+uint8_t MAC_ESP2[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // TODO: ersetzen
+uint8_t MAC_ESP3[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // TODO: ersetzen
+uint8_t MAC_ESP4[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // TODO: ersetzen
 
-// WiFi Access Point
-const char* AP_SSID = "ESP-HOST";
+// ============================================================================
+// WIFI AP
+// ============================================================================
+const char* AP_SSID     = "ESP-HOST";
 const char* AP_PASSWORD = "espHostPass";
+const int   AP_CHANNEL  = 1; // ESP-NOW + AP müssen denselben Kanal nutzen!
 
-// Web Server
 WebServer server(80);
 
-// Client ESP URLs (werden automatisch registriert)
-#define MAX_CLIENTS 10
+// ============================================================================
+// ESP-NOW NACHRICHTENSTRUKTUREN
+// ============================================================================
 
-struct ClientDevice {
-  String name;
-  String ip;
+// Host → Client: Befehl
+typedef struct __attribute__((packed)) {
+  char  cmd[12];   // "RELAY", "TRAIN", "WIND"
+  int16_t idx;
+  int16_t val;
+  int16_t extra;   // z.B. Richtung für Motor
+} CmdMsg;
+
+// Client → Host: Status-Antwort
+typedef struct __attribute__((packed)) {
+  char    device[8];        // "esp1", "esp2", usw.
+  int16_t relays[8];        // Relay-Zustände (bis zu 8)
+  float   sensors[5];       // Sensor-Rohwerte (mA)
+  float   temp;             // Temperatur (NAN wenn nicht vorhanden)
+  float   flow;             // Durchfluss (nur ESP4)
+  int16_t pwm;              // Motor-PWM (nur ESP3)
+  int8_t  forward;          // Motor-Richtung (nur ESP3)
+  int8_t  running;          // Wind-Status (nur ESP3)
+  int8_t  relay_count;      // Anzahl gültiger Relays
+  int8_t  sensor_count;     // Anzahl gültiger Sensoren
+} StatusMsg;
+
+// Gespeicherter Zustand pro Client
+struct ClientState {
+  bool    online;
   unsigned long lastSeen;
+  StatusMsg status;
 };
 
-ClientDevice clients[MAX_CLIENTS];
+ClientState clientStates[4]; // Index: 0=esp1, 1=esp2, 2=esp3, 3=esp4
 
-// Monitoring
-int lastStationCount = 0;
+// Hilfsfunktion: Index eines Clients anhand des Namens
+int clientIndex(const char* name) {
+  if (strcmp(name, "esp1") == 0) return 0;
+  if (strcmp(name, "esp2") == 0) return 1;
+  if (strcmp(name, "esp3") == 0) return 2;
+  if (strcmp(name, "esp4") == 0) return 3;
+  return -1;
+}
+
+uint8_t* clientMAC(int idx) {
+  switch(idx) {
+    case 0: return MAC_ESP1;
+    case 1: return MAC_ESP2;
+    case 2: return MAC_ESP3;
+    case 3: return MAC_ESP4;
+    default: return nullptr;
+  }
+}
+
+// Eindeutiger Bezeichner pro Client
+const char* CLIENT_NAMES[4] = {"esp1", "esp2", "esp3", "esp4"};
 
 // ============================================================================
-// HELPER FUNCTIONS
+// ESP-NOW CALLBACKS
 // ============================================================================
 
-// Findet Client-IP anhand des Namens
-String getClientIP(String name) {
-  Serial.println("[getClientIP] Searching for: '" + name + "'");
-  
-  for (int i = 0; i < MAX_CLIENTS; i++) {
-    Serial.printf("[getClientIP] Checking slot %d: name='%s', ip='%s'\n", 
-                  i, clients[i].name.c_str(), clients[i].ip.c_str());
-    
-    if (clients[i].name.length() > 0 && clients[i].name.equals(name)) {
-      Serial.println("[getClientIP] Found! IP: " + clients[i].ip);
-      return clients[i].ip;
-    }
-  }
-  
-  Serial.println("[getClientIP] NOT FOUND!");
-  return "";
-}
-
-// Registriert oder aktualisiert einen Client
-void registerClient(String name, String ip) {
-  // Prüfe ob Client bereits existiert
-  for (int i = 0; i < MAX_CLIENTS; i++) {
-    if (clients[i].name.equals(name)) {
-      clients[i].ip = ip;
-      clients[i].lastSeen = millis();
-      Serial.println("[Client] Updated: " + name + " @ " + ip);
-      return;
-    }
-  }
-  
-  // Neuer Client - finde freien Slot
-  for (int i = 0; i < MAX_CLIENTS; i++) {
-    if (clients[i].name.length() == 0) {
-      clients[i].name = name;
-      clients[i].ip = ip;
-      clients[i].lastSeen = millis();
-      Serial.println("[Client] Registered: " + name + " @ " + ip);
-      return;
-    }
-  }
-  
-  Serial.println("[Client] ERROR: Max clients reached!");
-}
-
-// Forward Request zu einem Client-ESP mit Retry-Logik
-String forwardRequest(String target, String method, String path, String body) {
-  String ip = getClientIP(target);
-  if (ip == "") {
-    return "{\"error\":\"Client not found\"}";
-  }
-  
-  // Update lastSeen
-  for (int i = 0; i < MAX_CLIENTS; i++) {
-    if (clients[i].name.equals(target)) {
-      clients[i].lastSeen = millis();
-      break;
-    }
-  }
-  
-  String url = "http://" + ip + path;
-  int retryCount = 0;
-  int httpCode = -1;
-  String payload = "";
-
-  // Retry-Schleife (max 2 Versuche)
-  while (retryCount < 2 && httpCode <= 0) {
-    HTTPClient httpLocal;
-    httpLocal.begin(url);
-    httpLocal.setTimeout(1500); // 1.5s pro Versuch
-    httpLocal.addHeader("Connection", "close"); // Keine persistenten Verbindungen (stabiler für AP)
-    
-    if (method == "GET") {
-      httpCode = httpLocal.GET();
-    } else {
-      httpLocal.addHeader("Content-Type", "application/json");
-      httpCode = httpLocal.POST(body);
-    }
-
-    if (httpCode > 0) {
-      payload = httpLocal.getString();
-    }
-    httpLocal.end();
-    
-    if (httpCode <= 0) {
-      retryCount++;
-      if (retryCount < 2) delay(50); // Kurz warten vor Retry
-    }
-  }
-  
-  // JSON Response zusammenbauen
-  String response = "{\"code\":" + String(httpCode) + ",\"body\":";
-  if (httpCode > 0 && payload.length() > 0) {
-    if (payload.startsWith("{") || payload.startsWith("[")) {
-      response += payload;
-    } else {
-      response += "\"" + payload + "\"";
-    }
-  } else {
-    response += "{\"error\":\"HTTP error " + String(httpCode) + "\"}";
-  }
-  response += "}";
-  
-  return response;
-}
-
-// Delay mit Yield (verhindert Watchdog Reset)
-void delayWithYield(unsigned long ms) {
-  unsigned long start = millis();
-  while (millis() - start < ms) {
-    yield();
-    delay(1);
+void onSendCallback(const uint8_t* mac, esp_now_send_status_t status) {
+  // Optional: Fehlerlogging wenn Paket nicht ankam
+  if (status != ESP_NOW_SEND_SUCCESS) {
+    Serial.printf("[ESP-NOW] Send FAILED to %02X:%02X:%02X:%02X:%02X:%02X\n",
+                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   }
 }
 
-// Schaltet ein Relay über Forward-Request
-// Returns true on success, false on failure
-bool setRelayByForward(String device, int idx, int val) {
-  String path = "/set?idx=" + String(idx) + "&val=" + String(val);
-  String response = forwardRequest(device, "GET", path, "");
-  Serial.println("[Relay] " + device + " idx=" + String(idx) + " val=" + String(val));
-  
-  // Check if request was successful (response should contain "code":200)
-  if (response.indexOf("\"code\":200") > 0) {
-    return true;
-  } else {
-    Serial.println("[Relay] ERROR: Failed to set relay - " + response);
+void onReceiveCallback(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+  if (len != sizeof(StatusMsg)) return;
+
+  StatusMsg msg;
+  memcpy(&msg, data, sizeof(msg));
+
+  int idx = clientIndex(msg.device);
+  if (idx < 0) {
+    Serial.printf("[ESP-NOW] Unbekannter Client: %s\n", msg.device);
+    return;
+  }
+
+  clientStates[idx].online   = true;
+  clientStates[idx].lastSeen = millis();
+  memcpy(&clientStates[idx].status, &msg, sizeof(msg));
+}
+
+// ============================================================================
+// ESP-NOW SENDEN
+// ============================================================================
+
+bool sendCmd(const char* target, const char* cmd, int idx, int val, int extra = 0) {
+  int ci = clientIndex(target);
+  if (ci < 0) {
+    Serial.printf("[CMD] Unbekanntes Ziel: %s\n", target);
     return false;
   }
+  uint8_t* mac = clientMAC(ci);
+
+  CmdMsg msg;
+  memset(&msg, 0, sizeof(msg));
+  strlcpy(msg.cmd, cmd, sizeof(msg.cmd));
+  msg.idx   = (int16_t)idx;
+  msg.val   = (int16_t)val;
+  msg.extra = (int16_t)extra;
+
+  esp_err_t result = esp_now_send(mac, (uint8_t*)&msg, sizeof(msg));
+  if (result != ESP_OK) {
+    Serial.printf("[CMD] esp_now_send Fehler: %d\n", result);
+    return false;
+  }
+  return true;
 }
 
 // ============================================================================
-// SCENARIO DEFINITIONS
+// SZENARIEN
 // ============================================================================
 
 void scenario_kohlekraftwerk(int state) {
   if (state == 0) {
     Serial.println("[Scenario] Kohlekraftwerk AUS");
-    if (!setRelayByForward("esp1", 0, 0)) return;
-    delay(50);
-    if (!setRelayByForward("esp1", 1, 0)) return;
-    delay(50);
-    if (!setRelayByForward("esp1", 4, 0)) return;
-    delay(50);
-    if (!setRelayByForward("esp2", 0, 0)) return;
-    Serial.println("[Scenario] Kohlekraftwerk AUS - Fertig");
-  } else if (state == 1) {
-    Serial.println("[Scenario] Kohlekraftwerk EIN - Start");
-    if (!setRelayByForward("esp1", 0, 1)) return;
-    delay(50);
-    if (!setRelayByForward("esp1", 1, 1)) return;
-    delay(50);
-    if (!setRelayByForward("esp1", 4, 1)) return;
-    delay(50);
-    if (!setRelayByForward("esp2", 0, 1)) return;
-    Serial.println("[Scenario] Warte 5 Sekunden...");
-    delayWithYield(5000);
-    Serial.println("[Scenario] Relay 2 wird ausgeschaltet");
-    if (!setRelayByForward("esp1", 1, 0)) return;
-    Serial.println("[Scenario] Kohlekraftwerk EIN - Fertig");
-  }
-}
-
-void scenario_test(int state) {
-  switch(state) {
-    case 0:
-      Serial.println("[Scenario] Test Reset");
-      for (int i = 0; i < 8; i++) {
-        if (!setRelayByForward("esp1", i, 0)) return;
-        delay(50);
-      }
-      for (int i = 0; i < 4; i++) {
-        if (!setRelayByForward("esp2", i, 0)) return;
-        delay(50);
-      }
-      break;
-      
-    case 1:
-      Serial.println("[Scenario] Test Sequenz 1");
-      if (!setRelayByForward("esp1", 0, 1)) return;
-      delayWithYield(2000);
-      if (!setRelayByForward("esp1", 1, 1)) return;
-      delayWithYield(2000);
-      if (!setRelayByForward("esp1", 2, 1)) return;
-      delayWithYield(2000);
-      if (!setRelayByForward("esp1", 0, 0)) return;
-      delayWithYield(1000);
-      if (!setRelayByForward("esp1", 1, 0)) return;
-      delayWithYield(1000);
-      if (!setRelayByForward("esp1", 2, 0)) return;
-      break;
-      
-    case 2:
-      Serial.println("[Scenario] Test Sequenz 2");
-      if (!setRelayByForward("esp2", 0, 1)) return;
-      delayWithYield(1000);
-      if (!setRelayByForward("esp2", 1, 1)) return;
-      delayWithYield(1000);
-      if (!setRelayByForward("esp2", 0, 0)) return;
-      delayWithYield(1000);
-      if (!setRelayByForward("esp2", 1, 0)) return;
-      break;
+    sendCmd("esp1", "RELAY", 0, 0);
+    sendCmd("esp1", "RELAY", 1, 0);
+    sendCmd("esp1", "RELAY", 4, 0);
+    sendCmd("esp2", "RELAY", 0, 0);
+  } else {
+    Serial.println("[Scenario] Kohlekraftwerk EIN");
+    sendCmd("esp1", "RELAY", 0, 1);
+    sendCmd("esp1", "RELAY", 1, 1);
+    sendCmd("esp1", "RELAY", 4, 1);
+    sendCmd("esp2", "RELAY", 0, 1);
+    delay(5000);
+    sendCmd("esp1", "RELAY", 1, 0);
   }
 }
 
 void scenario_alles(int state) {
-  if (state == 0) {
-    Serial.println("[Scenario] Alle Relays AUS");
-    for (int i = 0; i < 8; i++) {
-      if (!setRelayByForward("esp1", i, 0)) return;
-      delay(50);
-    }
-    for (int i = 0; i < 4; i++) {
-      if (!setRelayByForward("esp2", i, 0)) return;
-      delay(50);
-    }
-  } else if (state == 1) {
-    Serial.println("[Scenario] Alle Relays AN");
-    for (int i = 0; i < 8; i++) {
-      if (!setRelayByForward("esp1", i, 1)) return;
-      delay(50);
-    }
-    for (int i = 0; i < 4; i++) {
-      if (!setRelayByForward("esp2", i, 1)) return;
-      delay(50);
-    }
-  }
+  int v = (state == 1) ? 1 : 0;
+  for (int i = 0; i < 8; i++) sendCmd("esp1", "RELAY", i, v);
+  for (int i = 0; i < 4; i++) sendCmd("esp2", "RELAY", i, v);
 }
 
 // ============================================================================
-// WEB SERVER HANDLERS
+// HTTP SERVER HANDLER
 // ============================================================================
 
-// GET /clients - Liste aller registrierten Clients
+// GET /clients — Verbindungsstatus aller Clients
 void handleClients() {
+  unsigned long now = millis();
   String json = "{\"clients\":[";
   bool first = true;
-  
-  for (int i = 0; i < MAX_CLIENTS; i++) {
-    if (clients[i].name.length() > 0) {
-      if (!first) json += ",";
-      json += "{\"name\":\"" + clients[i].name + "\",";
-      json += "\"ip\":\"" + clients[i].ip + "\",";
-      json += "\"lastSeen\":" + String(clients[i].lastSeen) + "}";
-      first = false;
+  for (int i = 0; i < 4; i++) {
+    // Client als offline markieren wenn > 10s kein Heartbeat
+    if (clientStates[i].online && (now - clientStates[i].lastSeen > 10000)) {
+      clientStates[i].online = false;
     }
+    if (!first) json += ",";
+    json += "{\"name\":\"" + String(CLIENT_NAMES[i]) + "\",";
+    json += "\"online\":" + String(clientStates[i].online ? "true" : "false") + ",";
+    json += "\"lastSeen\":" + String(clientStates[i].lastSeen) + "}";
+    first = false;
   }
   json += "]}";
-  
   server.send(200, "application/json", json);
 }
 
-// POST /register - Client registrieren
-void handleRegister() {
-  if (!server.hasArg("plain")) {
-    server.send(400, "application/json", "{\"error\":\"No body\"}");
-    return;
-  }
-  
-  String body = server.arg("plain");
-  Serial.println("[Register] Received: " + body);
-  
-  // Parse JSON manuell: {"name":"esp1","ip":"..."}
-  int nameStart = body.indexOf("\"name\":\"");
-  if (nameStart < 0) {
-    server.send(400, "application/json", "{\"error\":\"No name field\"}");
-    return;
-  }
-  
-  nameStart += 8;  // Länge von "name":"
-  int nameEnd = body.indexOf("\"", nameStart);
-  String name = body.substring(nameStart, nameEnd);
-  
-  // IP aus Request ermitteln
-  String clientIP = server.client().remoteIP().toString();
-  
-  Serial.println("[Register] Name: '" + name + "', IP: " + clientIP);
-  
-  registerClient(name, clientIP);
-  
-  server.send(200, "application/json", "{\"success\":true}");
-}
-
-// Hilfsfunktion: Extrahiert JSON-String-Wert
-String extractJsonString(String json, String key) {
-  String search = "\"" + key + "\":";
-  int pos = json.indexOf(search);
-  if (pos < 0) {
-    Serial.println("[JSON] Key '" + key + "' not found in: " + json);
-    return "";
-  }
-  
-  // Finde den Start des Wertes (nach dem ':')
-  int valueStart = pos + search.length();
-  
-  // Überspringe Leerzeichen
-  while (valueStart < json.length() && json.charAt(valueStart) == ' ') {
-    valueStart++;
-  }
-  
-  // Prüfe ob es ein String ist (beginnt mit ")
-  if (valueStart >= json.length() || json.charAt(valueStart) != '"') {
-    Serial.println("[JSON] Value for '" + key + "' is not a string");
-    return "";
-  }
-  
-  // Überspringe das öffnende "
-  valueStart++;
-  
-  // Finde das schließende " (beachte escaped quotes)
-  int valueEnd = valueStart;
-  while (valueEnd < json.length()) {
-    if (json.charAt(valueEnd) == '"' && (valueEnd == 0 || json.charAt(valueEnd - 1) != '\\')) {
-      break;
-    }
-    valueEnd++;
-  }
-  
-  String value = json.substring(valueStart, valueEnd);
-  Serial.println("[JSON] Extracted '" + key + "' = '" + value + "'");
-  return value;
-}
-
-// POST /forward - Request zu Client weiterleiten
+// POST /forward — Relay/Motor-Befehl weiterleiten
 void handleForward() {
   if (!server.hasArg("plain")) {
     server.send(400, "application/json", "{\"error\":\"No body\"}");
     return;
   }
-  
   String body = server.arg("plain");
-  Serial.println("[Forward] Request body: " + body);
-  Serial.println("[Forward] Body length: " + String(body.length()));
-  
-  // Parse JSON mit verbesserter Funktion
-  String target = extractJsonString(body, "target");
-  String method = extractJsonString(body, "method");
-  String path = extractJsonString(body, "path");
-  String reqBody = extractJsonString(body, "body");
-  
-  Serial.println("[Forward] Parsed - target: '" + target + "', method: '" + method + "', path: '" + path + "'");
-  
-  if (target.length() == 0) {
-    server.send(400, "application/json", "{\"error\":\"No target specified\"}");
+
+  // Einfacher JSON-Parser für: {"target":"espX","method":"GET","path":"/set?idx=0&val=1"}
+  auto extractStr = [&](const String& key) -> String {
+    String search = "\"" + key + "\":\"";
+    int pos = body.indexOf(search);
+    if (pos < 0) return "";
+    int start = pos + search.length();
+    int end   = body.indexOf("\"", start);
+    return (end > start) ? body.substring(start, end) : "";
+  };
+
+  String target = extractStr("target");
+  String path   = extractStr("path");
+
+  if (target.length() == 0 || path.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"Missing target or path\"}");
     return;
   }
-  
-  String response = forwardRequest(target, method, path, reqBody);
-  server.send(200, "application/json", response);
+
+  // Befehle aus dem Pfad extrahieren
+  // Unterstützt: /set?idx=X&val=Y  /train?pwm=X&dir=Y  /set?val=X (wind)
+  bool success = false;
+
+  if (path.startsWith("/set?idx=")) {
+    // Relay: /set?idx=X&val=Y
+    int idxPos = path.indexOf("idx=") + 4;
+    int valPos = path.indexOf("val=") + 4;
+    int idx = path.substring(idxPos).toInt();
+    int val = path.substring(valPos).toInt();
+    success = sendCmd(target.c_str(), "RELAY", idx, val);
+
+  } else if (path.startsWith("/train?")) {
+    // Motor (ESP3): /train?pwm=X&dir=Y
+    int pwmPos = path.indexOf("pwm=") + 4;
+    int dirPos = path.indexOf("dir=") + 4;
+    int pwm = path.substring(pwmPos).toInt();
+    int dir = (dirPos > 4) ? path.substring(dirPos).toInt() : 1;
+    success = sendCmd(target.c_str(), "TRAIN", 0, pwm, dir);
+
+  } else if (path.startsWith("/set?val=")) {
+    // Wind (ESP3): /set?val=X
+    int valPos = path.indexOf("val=") + 4;
+    int val = path.substring(valPos).toInt();
+    success = sendCmd(target.c_str(), "WIND", 0, val);
+
+  } else {
+    server.send(400, "application/json", "{\"error\":\"Unknown path\"}");
+    return;
+  }
+
+  if (success) {
+    server.send(200, "application/json", "{\"code\":200,\"body\":\"ok\"}");
+  } else {
+    server.send(502, "application/json", "{\"code\":-1,\"body\":{\"error\":\"ESP-NOW send failed\"}}");
+  }
 }
 
-// GET /scenario?name=X&state=Y - Szenario ausführen
+// GET /state/<device> — Letzten bekannten Zustand abrufen
+void handleDeviceState() {
+  String uri = server.uri(); // z.B. /state/esp1
+  String device = uri.substring(uri.lastIndexOf('/') + 1);
+  int idx = clientIndex(device.c_str());
+
+  if (idx < 0) {
+    server.send(404, "application/json", "{\"error\":\"Unknown device\"}");
+    return;
+  }
+
+  ClientState& cs = clientStates[idx];
+  StatusMsg&   s  = cs.status;
+
+  String json = "{";
+
+  if (device == "esp1") {
+    for (int i = 0; i < s.relay_count; i++) {
+      json += "\"r" + String(i) + "\":" + String(s.relays[i]);
+      json += ",";
+    }
+    json += "\"temp\":" + (isnan(s.temp) ? String("null") : String(s.temp, 2));
+
+  } else if (device == "esp2") {
+    for (int i = 0; i < s.relay_count; i++) {
+      json += "\"r" + String(i) + "\":" + String(s.relays[i]);
+      json += ",";
+    }
+    json += "\"temp\":" + (isnan(s.temp) ? String("null") : String(s.temp, 2));
+
+  } else if (device == "esp3") {
+    json += "\"running\":" + String(s.running ? "true" : "false") + ",";
+    json += "\"pwm\":" + String(s.pwm) + ",";
+    json += "\"forward\":" + String(s.forward ? "true" : "false") + ",";
+    json += "\"relays\":[";
+    for (int i = 0; i < s.relay_count; i++) {
+      json += String(s.relays[i]);
+      if (i < s.relay_count - 1) json += ",";
+    }
+    json += "]";
+
+  } else if (device == "esp4") {
+    json += "\"sensors\":[";
+    for (int i = 0; i < s.sensor_count; i++) {
+      json += "{\"current\":" + String(s.sensors[i], 2) + ",\"pressure\":0.00}";
+      if (i < s.sensor_count - 1) json += ",";
+    }
+    json += "],\"relays\":[";
+    for (int i = 0; i < s.relay_count; i++) {
+      json += String(s.relays[i]);
+      if (i < s.relay_count - 1) json += ",";
+    }
+    json += "],\"flow\":" + String(s.flow, 1);
+  }
+
+  json += "}";
+
+  // app.py erwartet {code:200, body:{...}}
+  server.send(200, "application/json",
+    "{\"code\":200,\"body\":" + json + ",\"offline\":" +
+    String(cs.online ? "false" : "true") + "}");
+}
+
+// GET /scenario?name=X&state=Y
 void handleScenario() {
   if (!server.hasArg("name") || !server.hasArg("state")) {
-    server.send(400, "application/json", 
-      "{\"error\":\"Missing parameters. Usage: /scenario?name=<n>&state=<state>\"}");
+    server.send(400, "application/json", "{\"error\":\"Missing parameters\"}");
     return;
   }
-  
   String name = server.arg("name");
-  int state = server.arg("state").toInt();
-  
-  Serial.println("====================================");
-  Serial.println("[Scenario] Request: " + name + " | State: " + String(state));
-  Serial.println("====================================");
-  
+  int    state = server.arg("state").toInt();
+
   if (name == "kohlekraftwerk") {
     scenario_kohlekraftwerk(state);
-    server.send(200, "application/json", 
-      "{\"success\":true,\"scenario\":\"kohlekraftwerk\",\"state\":" + String(state) + "}");
-    
-  } else if (name == "test") {
-    scenario_test(state);
-    server.send(200, "application/json", 
-      "{\"success\":true,\"scenario\":\"test\",\"state\":" + String(state) + "}");
-    
   } else if (name == "alles") {
     scenario_alles(state);
-    server.send(200, "application/json", 
-      "{\"success\":true,\"scenario\":\"alles\",\"state\":" + String(state) + "}");
-    
   } else {
-    server.send(404, "application/json", 
-      "{\"error\":\"Unknown scenario: " + name + "\"}");
+    server.send(404, "application/json", "{\"error\":\"Unknown scenario\"}");
+    return;
   }
-  
-  Serial.println("[Scenario] Request completed");
+  server.send(200, "application/json",
+    "{\"success\":true,\"scenario\":\"" + name + "\",\"state\":" + String(state) + "}");
 }
 
-// GET / - Info Page
 void handleRoot() {
-  String html = "<html><body><h1>ESP-Host (ESP32)</h1>";
-  html += "<p>Access Point: " + String(AP_SSID) + "</p>";
-  html += "<p>IP: " + WiFi.softAPIP().toString() + "</p>";
-  html += "<p>Connected WiFi Devices: " + String(WiFi.softAPgetStationNum()) + "</p>";
-  html += "<h2>Registered Clients:</h2><ul>";
-  
-  for (int i = 0; i < MAX_CLIENTS; i++) {
-    if (clients[i].name.length() > 0) {
-      html += "<li>" + clients[i].name + " @ " + clients[i].ip;
-      unsigned long age = (millis() - clients[i].lastSeen) / 1000;
-      html += " (last seen " + String(age) + "s ago)</li>";
+  String html = "<html><body><h1>ESP-Host</h1>";
+  html += "<p>AP: " + String(AP_SSID) + " | Kanal: " + String(AP_CHANNEL) + "</p>";
+  html += "<h2>Client Status:</h2><ul>";
+  for (int i = 0; i < 4; i++) {
+    html += "<li>" + String(CLIENT_NAMES[i]) + ": ";
+    html += clientStates[i].online ? "ONLINE" : "OFFLINE";
+    if (clientStates[i].online) {
+      unsigned long age = (millis() - clientStates[i].lastSeen) / 1000;
+      html += " (vor " + String(age) + "s)";
     }
+    html += "</li>";
   }
-  
   html += "</ul></body></html>";
   server.send(200, "text/html", html);
 }
@@ -455,58 +367,77 @@ void handleRoot() {
 // SETUP
 // ============================================================================
 
+void registerPeer(uint8_t* mac) {
+  esp_now_peer_info_t peer = {};
+  memcpy(peer.peer_addr, mac, 6);
+  peer.channel = AP_CHANNEL;
+  peer.encrypt = false;
+  if (esp_now_add_peer(&peer) != ESP_OK) {
+    Serial.printf("[ESP-NOW] Peer hinzufügen fehlgeschlagen: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                  mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n\n=== ESP-Host (ESP32) starting ===");
-  
-  // WiFi Access Point starten
-  WiFi.mode(WIFI_AP);
-  // Allow up to 8 connections (default is 4 on some ESP32 cores)
-  // Parameters: SSID, Password, Channel, Hidden, Max_Connections
-  WiFi.softAP(AP_SSID, AP_PASSWORD, 1, 0, 8);
-  WiFi.setSleep(false); // Verhindert Latenz-Spitzen und verbessert Erreichbarkeit
-  
-  IPAddress IP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(IP);
-  
-  // Web Server Routes
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/clients", HTTP_GET, handleClients);
-  server.on("/register", HTTP_POST, handleRegister);
-  server.on("/forward", HTTP_POST, handleForward);
-  server.on("/scenario", HTTP_GET, handleScenario);
-  
+  Serial.println("\n=== ESP-Host startet ===");
+
+  // Clients initialisieren
+  for (int i = 0; i < 4; i++) {
+    memset(&clientStates[i], 0, sizeof(ClientState));
+    clientStates[i].status.temp = NAN;
+  }
+
+  // WiFi: AP+STA Modus — AP für Pi, STA-Modus nötig für ESP-NOW
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(AP_SSID, AP_PASSWORD, AP_CHANNEL, 0, 4);
+  WiFi.setSleep(false);
+  Serial.print("AP IP: ");
+  Serial.println(WiFi.softAPIP());
+
+  // ESP-NOW initialisieren
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("[ESP-NOW] FEHLER: Initialisierung fehlgeschlagen!");
+    return;
+  }
+  esp_now_register_send_cb(onSendCallback);
+  esp_now_register_recv_cb(onReceiveCallback);
+
+  // Peers registrieren
+  registerPeer(MAC_ESP1);
+  registerPeer(MAC_ESP2);
+  registerPeer(MAC_ESP3);
+  registerPeer(MAC_ESP4);
+  Serial.println("[ESP-NOW] Peers registriert");
+
+  // HTTP Server (für Raspberry Pi — unveränderte API)
+  server.on("/",          HTTP_GET,  handleRoot);
+  server.on("/clients",   HTTP_GET,  handleClients);
+  server.on("/forward",   HTTP_POST, handleForward);
+  server.on("/scenario",  HTTP_GET,  handleScenario);
+  // Direkter State-Abruf (optional, zusätzlich zu /forward)
+  server.on("/state/esp1", HTTP_GET, handleDeviceState);
+  server.on("/state/esp2", HTTP_GET, handleDeviceState);
+  server.on("/state/esp3", HTTP_GET, handleDeviceState);
+  server.on("/state/esp4", HTTP_GET, handleDeviceState);
   server.begin();
-  Serial.println("HTTP server started");
-  Serial.println("=== ESP-Host ready ===\n");
+
+  Serial.println("=== ESP-Host bereit ===\n");
 }
 
 // ============================================================================
-// MAIN LOOP
+// LOOP
 // ============================================================================
 
 void loop() {
   server.handleClient();
-  
-  // Überwachung der verbundenen WiFi-Geräte
-  int currentStationCount = WiFi.softAPgetStationNum();
-  if (currentStationCount != lastStationCount) {
-    Serial.printf("[INFO] Anzahl verbundener WiFi-Geräte: %d\n", currentStationCount);
-    lastStationCount = currentStationCount;
-  }
-  
-  // Client-Timeout prüfen (2 Minuten Inaktivität)
+
+  // Timeout-Check: Client als offline markieren wenn > 10s kein Heartbeat
   unsigned long now = millis();
-  for (int i = 0; i < MAX_CLIENTS; i++) {
-    if (clients[i].name.length() > 0 && now - clients[i].lastSeen > 120000) {
-      Serial.printf("[TIMEOUT] Client '%s' entfernt (keine Aktivität seit 2 Minuten)\n", 
-        clients[i].name.c_str());
-      clients[i].name = ""; 
-      clients[i].ip = ""; 
-      clients[i].lastSeen = 0;
+  for (int i = 0; i < 4; i++) {
+    if (clientStates[i].online && (now - clientStates[i].lastSeen > 10000)) {
+      clientStates[i].online = false;
+      Serial.printf("[TIMEOUT] %s offline\n", CLIENT_NAMES[i]);
     }
   }
-  
-  delay(10);
 }
