@@ -15,7 +15,7 @@
 // RELAY KONFIGURATION
 // ============================================================================
 const int relayPins[]       = {26, 25, 33, 32};
-const char* relayNames[]    = {"Relay 1", "Relay 2", "Relay 3", "Relay 4"};
+const char* relayNames[]    = {"Kühler-Kohle", "Ventil Turbine", "Ventil-Kohle", "Heizstab-Kohle"};
 const int   RELAY_COUNT     = 4;
 
 // Aktive-LOW Relays

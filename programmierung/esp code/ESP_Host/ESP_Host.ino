@@ -20,7 +20,7 @@
 // MAC-ADRESSEN DER CLIENTS — hier eintragen nach erstem Flashen!
 // ============================================================================
 uint8_t MAC_ESP1[6] = {0x84, 0x1F, 0xE8, 0x26, 0x58, 0xD8};
-uint8_t MAC_ESP2[6] = {0x20, 0xF3, 0xA8, 0x6A, 0xFB, 0xDC};
+uint8_t MAC_ESP2[6] = {0x20, 0x43, 0xA8, 0x6A, 0xFB, 0xDC};
 uint8_t MAC_ESP3[6] = {0x20, 0xE7, 0xC8, 0x6B, 0x4F, 0x18};
 uint8_t MAC_ESP4[6] = {0x8C, 0x4F, 0x00, 0x2E, 0x59, 0xE8};
 
@@ -64,6 +64,11 @@ struct ClientState {
   bool    online;
   unsigned long lastSeen;
   StatusMsg status;
+  // Pending acknowledgment
+  volatile bool     ackPending;   // true = warte auf Quittung
+  volatile bool     ackReceived;  // true = Quittung eingetroffen
+  volatile int      ackRelayIdx;  // erwarteter Relay-Index
+  volatile int      ackRelayVal;  // erwarteter Wert
 };
 
 ClientState clientStates[4]; // Index: 0=esp1, 1=esp2, 2=esp3, 3=esp4
@@ -118,6 +123,17 @@ void onReceiveCallback(const esp_now_recv_info_t* info, const uint8_t* data, int
   clientStates[idx].online   = true;
   clientStates[idx].lastSeen = millis();
   memcpy(&clientStates[idx].status, &msg, sizeof(msg));
+
+  // Prüfe ob dies eine Quittung für einen ausstehenden Relay-Befehl ist
+  if (clientStates[idx].ackPending) {
+    int ri  = clientStates[idx].ackRelayIdx;
+    int rv  = clientStates[idx].ackRelayVal;
+    if (ri >= 0 && ri < msg.relay_count) {
+      if (msg.relays[ri] == rv) {
+        clientStates[idx].ackReceived = true;
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -256,10 +272,47 @@ void handleForward() {
     return;
   }
 
-  if (success) {
-    server.send(200, "application/json", "{\"code\":200,\"body\":\"ok\"}");
-  } else {
+  if (!success) {
     server.send(502, "application/json", "{\"code\":-1,\"body\":{\"error\":\"ESP-NOW send failed\"}}");
+    return;
+  }
+
+  // -----------------------------------------------------------------------
+  // RELAY-Befehle: Warte auf Quittung vom Ziel-ESP (max. 1500 ms)
+  // -----------------------------------------------------------------------
+  bool isRelayCmd = path.startsWith("/set?idx=");
+  if (isRelayCmd) {
+    int idxPos = path.indexOf("idx=") + 4;
+    int valPos = path.indexOf("val=") + 4;
+    int relayIdx = path.substring(idxPos).toInt();
+    int relayVal = path.substring(valPos).toInt();
+    int ci = clientIndex(target.c_str());
+
+    clientStates[ci].ackRelayIdx = relayIdx;
+    clientStates[ci].ackRelayVal = relayVal;
+    clientStates[ci].ackReceived = false;
+    clientStates[ci].ackPending  = true;
+
+    const unsigned long TIMEOUT_MS = 1500;
+    unsigned long start = millis();
+    while (!clientStates[ci].ackReceived && (millis() - start) < TIMEOUT_MS) {
+      server.handleClient(); // HTTP-Loop am Laufen halten
+      delay(10);
+    }
+
+    clientStates[ci].ackPending = false;
+
+    if (clientStates[ci].ackReceived) {
+      server.send(200, "application/json", "{\"code\":200,\"body\":\"ok\"}");
+    } else {
+      Serial.printf("[CMD] Quittung von %s ausgeblieben (Relay %d → %d)\n",
+                    target.c_str(), relayIdx, relayVal);
+      server.send(504, "application/json",
+        "{\"code\":504,\"body\":{\"error\":\"No ACK from ESP\"}}");
+    }
+  } else {
+    // Motor/Wind-Befehle: kein Ack-Wait nötig
+    server.send(200, "application/json", "{\"code\":200,\"body\":\"ok\"}");
   }
 }
 

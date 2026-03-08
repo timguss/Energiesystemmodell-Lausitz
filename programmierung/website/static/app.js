@@ -310,7 +310,7 @@ async function toggleRelay(global_idx, val, inputElement) {
     return;
   }
 
-  // Sofort visuelles Feedback
+  // Sofort visuelles Feedback: Schalter deaktivieren während Anfrage läuft
   inputElement.disabled = true;
   pendingRequests.add(requestKey);
 
@@ -320,12 +320,23 @@ async function toggleRelay(global_idx, val, inputElement) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ global_idx, val })
     });
-    if (!r.ok) throw new Error('Request failed');
 
-    // Nach 100ms State neu laden (gibt Zeit für ESP zu reagieren)
+    if (!r.ok) {
+      // Schalten fehlgeschlagen — Ursprungszustand wiederherstellen
+      let errMsg = 'ESP hat nicht geantwortet';
+      try {
+        const j = await r.json();
+        if (j.error) errMsg = j.error;
+      } catch (_) { /* ignore parse errors */ }
+      inputElement.checked = !inputElement.checked; // Zurücksetzen
+      inputElement.disabled = false;
+      alert('Fehler beim Schalten:\n' + errMsg);
+      return;
+    }
+
+    // Erfolgreich — nach kurzer Pause State vom ESP neu laden
     setTimeout(async () => {
       inputElement.disabled = false;
-      // Nur den betroffenen Device neu laden
       let device;
       if (global_idx <= 8) device = 'esp1';
       else if (global_idx <= 12) device = 'esp2';

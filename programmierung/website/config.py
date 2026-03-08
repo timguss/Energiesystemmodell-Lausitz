@@ -44,10 +44,10 @@ RELAY_CONFIG = {
     7: {"device": "esp1", "idx": 6, "name": "MFC"},
     8: {"device": "esp1", "idx": 7, "name": "Unbelegt"},
 
-    9:  {"device": "esp2", "idx": 0, "name": "Reserve 1"},
-    10: {"device": "esp2", "idx": 1, "name": "Reserve 2"},
-    11: {"device": "esp2", "idx": 2, "name": "Reserve 3"},
-    12: {"device": "esp2", "idx": 3, "name": "Reserve 4"},
+    9:  {"device": "esp2", "idx": 0, "name": "Kühler-Kohle"},
+    10: {"device": "esp2", "idx": 1, "name": "Ventil Turbine"},
+    11: {"device": "esp2", "idx": 2, "name": "Ventil-Kohle"},
+    12: {"device": "esp2", "idx": 3, "name": "Heizstab-Kohle"},
 
     13: {"device": "esp4", "idx": 0, "name": "Elekrolyseur"},
     14: {"device": "esp4", "idx": 1, "name": "Tank leeren"},
@@ -81,8 +81,8 @@ def get_relay_id(identifier):
 # ============================================================================
 
 SENSOR_CONFIG = {
-    101: {"device": "esp1", "state_path": "temp",               "name": "Temperatur",    "unit": "°C",   "target_card": "coal"},
-    102: {"device": "esp2", "state_path": "temp",               "name": "Temperatur",    "unit": "°C",   "target_card": "gas"},
+    101: {"device": "esp1", "state_path": "temp",               "name": "Temperatur",    "unit": "°C",   "target_card": "gas"},
+    102: {"device": "esp2", "state_path": "temp",               "name": "Temperatur",    "unit": "°C",   "target_card": "coal"},
 
     #103: {"device": "esp3", "state_path": "sensors.0.pressure", "name": "Druck 1",       "unit": "bar",  "target_card": "wind"},
     #104: {"device": "esp3", "state_path": "sensors.1.pressure", "name": "Druck 2",       "unit": "bar",  "target_card": "wind"},

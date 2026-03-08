@@ -135,7 +135,14 @@ def api_relay_set():
     print(f"[INFO] Relay set: global={gi}, device={device}, idx={idx}, val={val}")
     try:
         res = host_forward(device, "GET", path, timeout=10)
-        return jsonify(res)
+        code = res.get("code", -1)
+        if code == 200:
+            return jsonify(res)
+        # 504 = ESP did not acknowledge (offline/no ACK), -1 = send failed
+        body = res.get("body", {})
+        err_msg = body.get("error", "ESP hat nicht geantwortet") if isinstance(body, dict) else str(body)
+        print(f"[WARN] Relay set failed for {device} idx={idx}: code={code}, err={err_msg}")
+        return jsonify({"error": err_msg, "code": code}), 502
     except Exception as e:
         print(f"[ERROR] /api/relay/set: {str(e)}")
         return jsonify({"error": str(e)}), 502
