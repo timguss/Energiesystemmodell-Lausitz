@@ -50,8 +50,8 @@ RELAY_CONFIG = {
     12: {"device": "esp2", "idx": 3, "name": "Heizstab-Kohle"},
 
     13: {"device": "esp4", "idx": 0, "name": "Elekrolyseur"},
-    14: {"device": "esp4", "idx": 1, "name": "Tank leeren"},
-    15: {"device": "esp4", "idx": 2, "name": "Tank füllen"},
+    14: {"device": "esp4", "idx": 1, "name": "Tank füllen"},
+    15: {"device": "esp4", "idx": 2, "name": "Tank leeren"},
     16: {"device": "esp4", "idx": 3, "name": "Durchschalten"},
     17: {"device": "esp4", "idx": 4, "name": "Lüfter"},
 
