@@ -56,6 +56,7 @@ typedef struct __attribute__((packed)) {
   int16_t idx;
   int16_t val;
   int16_t extra;
+  char    payload[64];
 } CmdMsg;
 
 typedef struct __attribute__((packed)) {
@@ -104,6 +105,11 @@ void onReceive(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
       Serial.printf("Relay %d (%s) → %s\n", idx, RELAYS[idx].title, val ? "AN" : "AUS");
       sendStatus(); // sofort zurückmelden
     }
+  } else if (strcmp(msg.cmd, "RS232") == 0) {
+    // RS232-Kommando (z.B. für MFC)
+    Serial.printf("RS232 Senden: %s\n", msg.payload);
+    MySerial.print(msg.payload);
+    MySerial.print("\r\n"); // Modbus ASCII / Standard-RS232-Terminator
   }
 }
 

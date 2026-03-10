@@ -39,10 +39,11 @@ WebServer server(80);
 
 // Host → Client: Befehl
 typedef struct __attribute__((packed)) {
-  char  cmd[12];   // "RELAY", "TRAIN", "WIND"
+  char  cmd[12];   // "RELAY", "TRAIN", "WIND", "RS232"
   int16_t idx;
   int16_t val;
   int16_t extra;   // z.B. Richtung für Motor
+  char  payload[64]; // Neu für RS232-Kommandos
 } CmdMsg;
 
 // Client → Host: Status-Antwort
@@ -140,7 +141,7 @@ void onReceiveCallback(const esp_now_recv_info_t* info, const uint8_t* data, int
 // ESP-NOW SENDEN
 // ============================================================================
 
-bool sendCmd(const char* target, const char* cmd, int idx, int val, int extra = 0) {
+bool sendCmd(const char* target, const char* cmd, int idx, int val, int extra = 0, const char* payload = "") {
   int ci = clientIndex(target);
   if (ci < 0) {
     Serial.printf("[CMD] Unbekanntes Ziel: %s\n", target);
@@ -154,6 +155,7 @@ bool sendCmd(const char* target, const char* cmd, int idx, int val, int extra = 
   msg.idx   = (int16_t)idx;
   msg.val   = (int16_t)val;
   msg.extra = (int16_t)extra;
+  strlcpy(msg.payload, payload, sizeof(msg.payload));
 
   esp_err_t result = esp_now_send(mac, (uint8_t*)&msg, sizeof(msg));
   if (result != ESP_OK) {
@@ -266,6 +268,31 @@ void handleForward() {
     int valPos = path.indexOf("val=") + 4;
     int val = path.substring(valPos).toInt();
     success = sendCmd(target.c_str(), "WIND", 0, val);
+
+  } else if (path.startsWith("/send")) {
+    // RS232-Befehl: Extrahiere cmd und timeout aus dem Pfad (/send?cmd=CMD&timeout=MS)
+    int cmdPos = path.indexOf("cmd=") + 4;
+    int timeoutPos = path.indexOf("timeout=") + 8;
+    String cmd = "";
+    int timeoutMs = 500;
+
+    if (cmdPos >= 4) {
+      int nextAmp = path.indexOf('&', cmdPos);
+      cmd = (nextAmp > 0) ? path.substring(cmdPos, nextAmp) : path.substring(cmdPos);
+    }
+    if (timeoutPos >= 8) {
+      int nextAmp = path.indexOf('&', timeoutPos);
+      String tStr = (nextAmp > 0) ? path.substring(timeoutPos, nextAmp) : path.substring(timeoutPos);
+      timeoutMs = tStr.toInt();
+    }
+
+    if (cmd.length() == 0) {
+      server.send(400, "application/json", "{\"error\":\"Missing cmd in path\"}");
+      return;
+    }
+
+    Serial.printf("[RS232] Forwarding to ESP1: cmd=%s, timeout=%d\n", cmd.c_str(), timeoutMs);
+    success = sendCmd(target.c_str(), "RS232", 0, timeoutMs, 0, cmd.c_str());
 
   } else {
     server.send(400, "application/json", "{\"error\":\"Unknown path\"}");

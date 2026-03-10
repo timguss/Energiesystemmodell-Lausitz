@@ -77,6 +77,7 @@ typedef struct __attribute__((packed)) {
   int16_t idx;
   int16_t val;
   int16_t extra;
+  char    payload[64];
 } CmdMsg;
 
 typedef struct __attribute__((packed)) {

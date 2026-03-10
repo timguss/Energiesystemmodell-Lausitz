@@ -53,10 +53,11 @@ def api_rs232():
     timeout = int(j.get("timeout", 500))
     if not cmd:
         return jsonify({"error": "no cmd"}), 400
-    inner = json.dumps({"cmd": cmd, "timeout": timeout})
+    # Pass RS232 command as URL parameters (easier to parse on ESP)
+    path = f"/send?cmd={cmd}&timeout={timeout}"
     print(f"[INFO] RS232 command: {cmd}")
     try:
-        res = host_forward("esp1", "POST", "/send", inner, timeout=5)
+        res = host_forward("esp1", "GET", path, timeout=5)
         return jsonify(res)
     except Exception as e:
         print(f"[ERROR] /api/rs232: {str(e)}")
