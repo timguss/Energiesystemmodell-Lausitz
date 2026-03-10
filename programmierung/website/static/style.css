@@ -18,6 +18,26 @@ body {
   gap: 20px;
 }
 
+.wifi-warning {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #ffebee;
+  color: #b71c1c;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.wifi-warning-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d32f2f;
+}
+
 .back-link {
   color: #667eea;
   text-decoration: none;

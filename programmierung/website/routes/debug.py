@@ -23,6 +23,29 @@ def api_debug_host():
         result["clients"] = clients
     except Exception as e:
         result["error"] = str(e)
+
+    # #region agent log
+    try:
+        import json, time
+        with open("debug-fbab11.log", "a", encoding="utf-8") as f:
+            f.write(json.dumps({
+                "sessionId": "fbab11",
+                "runId": "pre-fix",
+                "hypothesisId": "H2",
+                "location": "routes/debug.py:api_debug_host",
+                "message": "Backend host debug check",
+                "data": {
+                    "host": result.get("host"),
+                    "host_reachable": result.get("host_reachable"),
+                    "has_clients": bool(result.get("clients")),
+                    "error": result.get("error")
+                },
+                "timestamp": int(time.time() * 1000)
+            }) + "\n")
+    except Exception:
+        pass
+    # #endregion
+
     return jsonify(result)
 
 

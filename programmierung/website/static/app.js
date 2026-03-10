@@ -224,6 +224,36 @@
       el.className = 'status-indicator ' + (isOnline ? 'online' : 'offline');
       el.title = isOnline ? 'Verbunden' : 'Nicht erreichbar';
     }
+
+    if (device === 'host') {
+      updateWifiWarning();
+
+      // #region agent log
+      fetch('http://127.0.0.1:7898/ingest/b0609670-887b-4a4b-bba0-759c25d36794', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Debug-Session-Id': 'fbab11'
+        },
+        body: JSON.stringify({
+          sessionId: 'fbab11',
+          runId: 'pre-fix',
+          hypothesisId: 'H1',
+          location: 'static/app.js:updateStatusDisplay',
+          message: 'Host status updated in frontend',
+          data: { isOnline: isOnline },
+          timestamp: Date.now()
+        })
+      }).catch(() => { });
+      // #endregion
+    }
+  }
+
+  function updateWifiWarning() {
+    const bar = $('wifi-warning');
+    if (!bar) return;
+    const isOnline = !!deviceStatus.host;
+    bar.style.display = isOnline ? 'none' : 'flex';
   }
 
   async function checkHostStatus() {
