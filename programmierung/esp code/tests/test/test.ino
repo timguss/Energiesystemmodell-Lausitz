@@ -1,50 +1,37 @@
-// ================== KONFIGURATION ==================
-#define FLOW_PIN 17              // Blaues Kabel
-#define MEASURE_INTERVAL 1000    // Messfenster in ms
-float K_FACTOR = 1.0;            // Platzhalter! Wird später kalibriert
-                                 // Einheit: Pulse pro Liter
+#include <FastLED.h>
 
-// ================== VARIABLEN ======================
-volatile uint32_t pulseCount = 0;
+#define LED_PIN 18
+#define NUM_LEDS 60
 
-// ================== INTERRUPT ======================
-void IRAM_ATTR onPulse() {
-  pulseCount++;
-}
+CRGB leds[NUM_LEDS];
 
-// ================== SETUP ==========================
+float phasePower = 0;
+float phaseHeat  = 0;
+
 void setup() {
-  Serial.begin(115200);
-
-  pinMode(FLOW_PIN, INPUT_PULLUP);   // interner Pull-Up
-  attachInterrupt(digitalPinToInterrupt(FLOW_PIN),
-                  onPulse,
-                  FALLING);          // NPN → LOW-Puls
-
-  Serial.println("Flowmeter gestartet");
+  FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
+  FastLED.setBrightness(120);
 }
 
-// ================== LOOP ===========================
 void loop() {
-  static uint32_t lastMillis = 0;
 
-  if (millis() - lastMillis >= MEASURE_INTERVAL) {
-    lastMillis = millis();
+  fadeToBlackBy(leds, NUM_LEDS, 40);
 
-    // Pulse atomar übernehmen
-    noInterrupts();
-    uint32_t pulses = pulseCount;
-    pulseCount = 0;
-    interrupts();
+  for(int i = 0; i < NUM_LEDS; i++) {
 
-    // Berechnung
-    float pulsesPerSecond = pulses / (MEASURE_INTERVAL / 1000.0);
-    float flow_L_per_min  = (pulsesPerSecond * 60.0) / K_FACTOR;
+    float powerWave = sin((i * 0.25) + phasePower);
+    float heatWave  = sin((i * 0.25) + phaseHeat);
 
-    // Ausgabe
-    Serial.print("Pulse/s: ");
-    Serial.print(pulsesPerSecond);
-    Serial.print(" | Durchfluss [L/min]: ");
-    Serial.println(flow_L_per_min, 4);
+int powerBrightness = max(0, int(powerWave * 255));
+int heatBrightness  = max(0, int(heatWave  * 255));
+
+    leds[i] += CRGB(powerBrightness, 0, 0);
+    leds[i] += CRGB(0, 0, heatBrightness);
   }
+
+  phasePower += 0.20;   // Geschwindigkeit Strom →
+  phaseHeat  -= 0.20;   // Geschwindigkeit Wärme ←
+
+  FastLED.show();
+  delay(20);
 }
