@@ -1,7 +1,7 @@
 // Landing Page JavaScript - Interactive Effects
 // Wrapped in IIFE to avoid global namespace pollution
 
-(function() {
+(function () {
   'use strict';
 
   // ============================================================================
@@ -920,15 +920,13 @@
   // ============================================================================
 
   // Expose functions to window
-  window.Landing = {
-    loadScenarios,
-    setWind,
-    updateTrainPWM,
-    stopTrain,
-    toggleReserveSection,
-    refreshAllStatus,
-    cleanup
-  };
+  window.loadScenarios = loadScenarios;
+  window.setWind = setWind;
+  window.updateTrainPWM = updateTrainPWM;
+  window.stopTrain = stopTrain;
+  window.toggleReserveSection = toggleReserveSection;
+  window.refreshAllStatus = refreshAllStatus;
+  window.cleanup = cleanup;
 
   document.addEventListener('DOMContentLoaded', () => {
     createParticles();

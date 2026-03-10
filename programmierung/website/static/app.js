@@ -1,7 +1,7 @@
 // app.js — Frontend JavaScript for Central UI
 // Wrapped in IIFE to avoid global namespace pollution
 
-(function() {
+(function () {
   'use strict';
 
   // ============================================================================
@@ -763,17 +763,15 @@
   // ============================================================================
 
   // Expose functions that need to be called from HTML
-  window.App = {
-    toggleViewMode,
-    connectEsp,
-    loadScenarios,
-    setWind,
-    setPwm,
-    stopTrain,
-    updateRsCommand,
-    sendRs,
-    cleanup
-  };
+  window.toggleViewMode = toggleViewMode;
+  window.connectEsp = connectEsp;
+  window.loadScenarios = loadScenarios;
+  window.setWind = setWind;
+  window.setPwm = setPwm;
+  window.stopTrain = stopTrain;
+  window.updateRsCommand = updateRsCommand;
+  window.sendRs = sendRs;
+  window.cleanup = cleanup;
 
   // Start
   buildRelays();
