@@ -15,6 +15,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <esp_now.h>
+#include "secrets.h"  // WiFi credentials — NOT in git, see secrets.h.example
 
 // ============================================================================
 // MAC-ADRESSEN DER CLIENTS — hier eintragen nach erstem Flashen!
@@ -27,8 +28,7 @@ uint8_t MAC_ESP4[6] = {0x8C, 0x4F, 0x00, 0x2E, 0x59, 0xE8};
 // ============================================================================
 // WIFI AP
 // ============================================================================
-const char* AP_SSID     = "ESP-HOST";
-const char* AP_PASSWORD = "espHostPass";
+// AP_SSID and AP_PASSWORD are defined in secrets.h (gitignored)
 const int   AP_CHANNEL  = 1; // ESP-NOW + AP müssen denselben Kanal nutzen!
 
 WebServer server(80);

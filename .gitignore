@@ -398,3 +398,9 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# ============================================================
+# Secrets / Credentials — NEVER commit these!
+# ============================================================
+# Arduino/ESP WiFi credentials — copy secrets.h.example → secrets.h
+secrets.h
