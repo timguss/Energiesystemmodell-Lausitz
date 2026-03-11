@@ -1,7 +1,7 @@
 #include <FastLED.h>
 
 #define LED_PIN 18
-#define NUM_LEDS 60
+#define NUM_LEDS 162
 
 CRGB leds[NUM_LEDS];
 
@@ -15,22 +15,26 @@ void setup() {
 
 void loop() {
 
-  fadeToBlackBy(leds, NUM_LEDS, 40);
+  fadeToBlackBy(leds, NUM_LEDS, 50);
 
   for(int i = 0; i < NUM_LEDS; i++) {
 
-    float powerWave = sin((i * 0.25) + phasePower);
-    float heatWave  = sin((i * 0.25) + phaseHeat);
+    float powerWave = sin((i * 0.20) + phasePower);
+    float heatWave  = sin((i * 0.20) + phaseHeat);
 
-int powerBrightness = max(0, int(powerWave * 255));
-int heatBrightness  = max(0, int(heatWave  * 255));
+    int powerBrightness = max(0, int(powerWave * 200));
+    int heatBrightness  = max(0, int(heatWave  * 200));
 
-    leds[i] += CRGB(powerBrightness, 0, 0);
-    leds[i] += CRGB(0, 0, heatBrightness);
+    // Farben begrenzen damit sie sich nicht stark mischen
+    leds[i] = CRGB(
+      powerBrightness,
+      0,
+      heatBrightness
+    );
   }
 
-  phasePower += 0.20;   // Geschwindigkeit Strom →
-  phaseHeat  -= 0.20;   // Geschwindigkeit Wärme ←
+  phasePower += 0.18;   // Strom →
+  phaseHeat  -= 0.12;   // Wärme ←
 
   FastLED.show();
   delay(20);
