@@ -56,8 +56,9 @@ typedef struct __attribute__((packed)) {
   int16_t pwm;              // Motor-PWM (nur ESP3)
   int8_t  forward;          // Motor-Richtung (nur ESP3)
   int8_t  running;          // Wind-Status (nur ESP3)
-  int8_t  relay_count;      // Anzahl gültiger Relays
   int8_t  sensor_count;     // Anzahl gültiger Sensoren
+  uint8_t rs232_seq;        // Sequenznummer für RS232-Antworten
+  char    last_rs232_res[64]; // Letzte RS232-Antwort
 } StatusMsg;
 
 // Gespeicherter Zustand pro Client
@@ -70,6 +71,7 @@ struct ClientState {
   volatile bool     ackReceived;  // true = Quittung eingetroffen
   volatile int      ackRelayIdx;  // erwarteter Relay-Index
   volatile int      ackRelayVal;  // erwarteter Wert
+  volatile uint8_t  rs232WaitSeq; // Sequenznummer auf die wir warten
 };
 
 ClientState clientStates[4]; // Index: 0=esp1, 1=esp2, 2=esp3, 3=esp4
@@ -125,16 +127,21 @@ void onReceiveCallback(const esp_now_recv_info_t* info, const uint8_t* data, int
   clientStates[idx].lastSeen = millis();
   memcpy(&clientStates[idx].status, &msg, sizeof(msg));
 
-  // Prüfe ob dies eine Quittung für einen ausstehenden Relay-Befehl ist
-  if (clientStates[idx].ackPending) {
-    int ri  = clientStates[idx].ackRelayIdx;
-    int rv  = clientStates[idx].ackRelayVal;
-    if (ri >= 0 && ri < msg.relay_count) {
-      if (msg.relays[ri] == rv) {
-        clientStates[idx].ackReceived = true;
+    if (clientStates[idx].ackPending) {
+      if (clientStates[idx].ackRelayIdx >= 0) {
+        // Relay ACK
+        int ri  = clientStates[idx].ackRelayIdx;
+        int rv  = clientStates[idx].ackRelayVal;
+        if (ri < msg.relay_count && msg.relays[ri] == rv) {
+          clientStates[idx].ackReceived = true;
+        }
+      } else if (clientStates[idx].ackRelayIdx == -1) {
+        // RS232 ACK: Warte auf neue Sequenznummer
+        if (msg.rs232_seq != clientStates[idx].rs232WaitSeq) {
+          clientStates[idx].ackReceived = true;
+        }
       }
     }
-  }
 }
 
 // ============================================================================
@@ -292,6 +299,8 @@ void handleForward() {
     }
 
     Serial.printf("[RS232] Forwarding to ESP1: cmd=%s, timeout=%d\n", cmd.c_str(), timeoutMs);
+    int ci = clientIndex(target.c_str());
+    clientStates[ci].ackRelayIdx = -1; // Kennung für RS232-Wait
     success = sendCmd(target.c_str(), "RS232", 0, timeoutMs, 0, cmd.c_str());
 
   } else {
@@ -336,6 +345,29 @@ void handleForward() {
                     target.c_str(), relayIdx, relayVal);
       server.send(504, "application/json",
         "{\"code\":504,\"body\":{\"error\":\"No ACK from ESP\"}}");
+    }
+  } else if (path.startsWith("/send")) {
+    // RS232-Befehl: Warte auf Antwort
+    int ci = clientIndex(target.c_str());
+    clientStates[ci].ackRelayIdx = -1;
+    clientStates[ci].rs232WaitSeq = clientStates[ci].status.rs232_seq; // Alte Seq merken
+    clientStates[ci].ackReceived = false;
+    clientStates[ci].ackPending  = true;
+
+    unsigned long start = millis();
+    while (!clientStates[ci].ackReceived && (millis() - start) < 3000) {
+      server.handleClient();
+      delay(10);
+    }
+    clientStates[ci].ackPending = false;
+
+    if (clientStates[ci].ackReceived) {
+      String res = String(clientStates[ci].status.last_rs232_res);
+      if (res.length() == 0) res = "(leere Antwort)";
+      server.send(200, "application/json", "{\"code\":200,\"body\":\"" + res + "\"}");
+    } else {
+      server.send(504, "application/json", "{\"code\":504,\"body\":{\"error\":\"RS232 Timeout\"}}");
+    }
     }
   } else {
     // Motor/Wind-Befehle: kein Ack-Wait nötig

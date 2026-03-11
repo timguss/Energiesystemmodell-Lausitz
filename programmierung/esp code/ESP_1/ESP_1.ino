@@ -47,6 +47,7 @@ float ntcToCelsius(float R) { return 1.0f / ((1.0f / T0_K) + (1.0f / beta) * log
 // ============================================================================
 const int UART2_RX = 16, UART2_TX = 17;
 HardwareSerial MySerial(2);
+char last_mfc_res[64] = "";
 
 // ============================================================================
 // ESP-NOW STRUKTUREN
@@ -70,8 +71,11 @@ typedef struct __attribute__((packed)) {
   int8_t  running;
   int8_t  relay_count;
   int8_t  sensor_count;
+  uint8_t rs232_seq;
+  char    last_rs232_res[64];
 } StatusMsg;
 
+uint8_t current_rs232_seq = 0;
 uint8_t HOST_MAC[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // Wird automatisch ermittelt
 
 // ============================================================================
@@ -86,6 +90,8 @@ void sendStatus() {
   for (int i = 0; i < RELAY_COUNT; i++)
     msg.relays[i] = physToLogical(digitalRead(RELAYS[i].pin));
   msg.temp = cachedTempC;
+  msg.rs232_seq = current_rs232_seq;
+  strlcpy(msg.last_rs232_res, last_mfc_res, sizeof(msg.last_rs232_res));
 
   esp_now_send(HOST_MAC, (uint8_t*)&msg, sizeof(msg));
 }
@@ -107,9 +113,40 @@ void onReceive(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
     }
   } else if (strcmp(msg.cmd, "RS232") == 0) {
     // RS232-Kommando (z.B. für MFC)
-    Serial.printf("RS232 Senden: %s\n", msg.payload);
+    Serial.print("RS232 Senden: ");
+    Serial.print(msg.payload);
+    Serial.println("\\r\\n");
+    
+    // Puffer leeren vor dem Senden
+    while(MySerial.available()) MySerial.read();
+    memset(last_mfc_res, 0, sizeof(last_mfc_res));
+
     MySerial.print(msg.payload);
     MySerial.print("\r\n"); // Modbus ASCII / Standard-RS232-Terminator
+    
+    // Warte auf Antwort (max 500ms)
+    unsigned long start = millis();
+    int pos = 0;
+    while (millis() - start < 500) {
+      while (MySerial.available()) {
+        char c = MySerial.read();
+        if (c == '\r' || c == '\n') {
+          if (pos > 0) { // Ende der Zeile
+            start = 0; // break outer loop
+            break;
+          }
+        } else if (pos < sizeof(last_mfc_res) - 1) {
+          last_mfc_res[pos++] = c;
+        }
+      }
+      if (start == 0) break;
+      delay(1);
+    }
+    
+    current_rs232_seq++; // Neue Sequenznummer für Host signalisieren
+    Serial.print("RS232 Antwort: ");
+    Serial.println(last_mfc_res);
+    sendStatus(); // Sofort an Host melden
   }
 }
 

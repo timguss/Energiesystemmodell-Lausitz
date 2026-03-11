@@ -66,6 +66,8 @@ typedef struct __attribute__((packed)) {
   int8_t  running;
   int8_t  relay_count;
   int8_t  sensor_count;
+  uint8_t rs232_seq;
+  char    last_rs232_res[64];
 } StatusMsg;
 
 // ============================================================================
