@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Energiesystem Lausitz - Energieflüsse</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ============================================
+           GRUNDLEGENDES DESIGN
+           ============================================ */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #0a0e17;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+
+        #system {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #0a0e17 0%, #1a1f2e 50%, #0d1219 100%);
+        }
+
+        /* Hintergrund-Glows */
+        #system::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                radial-gradient(circle at 20% 80%, rgba(59,181,74,0.08) 0%, transparent 40%),
+                radial-gradient(circle at 80% 20%, rgba(245,208,0,0.06) 0%, transparent 40%),
+                radial-gradient(circle at 50% 50%, rgba(99,102,241,0.04) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        /* ============================================
+           KNOTEN (NODES)
+           ============================================ */
+        .node {
+            position: absolute;
+            width: 90px;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .node-visual {
+            width: 80px;
+            height: 80px;
+            border-radius: 20px;
+            background: linear-gradient(145deg, #1e2538 0%, #151a26 100%);
+            box-shadow:
+                0 8px 32px rgba(0,0,0,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.08),
+                0 0 0 1px rgba(255,255,255,0.05);
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .node-visual::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%);
+            border-radius: 20px;
+        }
+
+        .node-icon {
+            font-size: 28px;
+            z-index: 1;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+
+        .node-label {
+            margin-top: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            text-align: center;
+            color: #e2e8f0;
+            white-space: nowrap;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+            letter-spacing: 0.3px;
+        }
+
+        /* ============================================
+           VERBINDUNGSLINIEN (EDGES)
+           ============================================ */
+        svg {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .line {
+            fill: none;
+            stroke-linecap: round;
+        }
+
+        /* Farben: Strom=grün, Wärme=gelb, Sonstiges=grau */
+        .green  { stroke: #10b981; stroke-width: 3; }
+        .yellow { stroke: #fbbf24; stroke-width: 3; }
+        .grey   { stroke: #64748b; stroke-width: 2.5; }
+
+        /* Glüheffekt für Linien */
+        .line.green { filter: drop-shadow(0 0 8px #10b981); }
+        .line.yellow { filter: drop-shadow(0 0 8px #fbbf24); }
+
+        /* Animierte Flüsse */
+        .flow     { stroke-dasharray: 12 8; animation: flow     1.2s linear infinite; }
+        .flow-rev { stroke-dasharray: 12 8; animation: flowrev  1.2s linear infinite; }
+
+        @keyframes flow    { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -20; } }
+        @keyframes flowrev { from { stroke-dashoffset: 0; } to { stroke-dashoffset:  20; } }
+
+        /* ============================================
+           TITEL & LEGENDE
+           ============================================ */
+        .title-bar {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            text-align: center;
+        }
+
+        .title-bar h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #f8fafc;
+            margin: 0;
+            letter-spacing: -0.5px;
+            text-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        .title-bar p {
+            font-size: 13px;
+            color: #94a3b8;
+            margin: 8px 0 0 0;
+            font-weight: 400;
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            z-index: 20;
+            display: flex;
+            gap: 24px;
+            background: rgba(15,20,30,0.85);
+            padding: 14px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(10px);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #cbd5e1;
+        }
+
+        .legend-line {
+            width: 24px;
+            height: 3px;
+            border-radius: 2px;
+        }
+
+        .legend-line.green  { background: #10b981; box-shadow: 0 0 10px #10b981; }
+        .legend-line.yellow { background: #fbbf24; box-shadow: 0 0 10px #fbbf24; }
+        .legend-line.grey   { background: #64748b; }
+
+        /* ============================================
+           ZURÜCK-BUTTON
+           ============================================ */
+        .back-btn {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            background: rgba(15,20,30,0.85);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            color: #e2e8f0;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s ease;
+        }
+
+        .back-btn:hover {
+            background: rgba(30,40,60,0.9);
+            border-color: rgba(255,255,255,0.15);
+            transform: translateX(-2px);
+        }
+
+        .back-btn svg {
+            position: static;
+            width: 16px;
+            height: 16px;
+        }
+
+        /* ============================================
+           KNOTEN-GLOW EFFEKTE (optional)
+           ============================================ */
+        .node-coal .node-visual      { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(100,116,139,0.3), inset 0 1px 0 rgba(255,255,255,0.08); }
+        .node-gas .node-visual       { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(245,158,66,0.3), inset 0 1px 0 rgba(255,255,255,0.08); }
+        .node-solar .node-visual     { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 25px rgba(251,191,36,0.4), inset 0 1px 0 rgba(255,255,255,0.08); }
+        .node-wind .node-visual      { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 25px rgba(34,211,238,0.3), inset 0 1px 0 rgba(255,255,255,0.08); }
+        .node-elektro .node-visual   { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(139,92,246,0.4), inset 0 1px 0 rgba(255,255,255,0.08); }
+        .node-heatpump .node-visual { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(16,185,129,0.3), inset 0 1px 0 rgba(255,255,255,0.08); }
+        .node-gridNode .node-visual  { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 30px rgba(99,102,241,0.5), inset 0 1px 0 rgba(255,255,255,0.08); }
+        .node-external .node-visual  { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(236,72,153,0.3), inset 0 1px 0 rgba(255,255,255,0.08); }
+        .node-village .node-visual   { box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 15px rgba(148,163,184,0.2), inset 0 1px 0 rgba(255,255,255,0.08); }
+    </style>
+</head>
+<body>
+    <div id="system">
+        <svg id="grid"></svg>
+
+        <!-- Zurück-Button -->
+        <a href="/" class="back-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Zurück
+        </a>
+
+        <!-- Titel -->
+        <div class="title-bar">
+            <h1>Energiesystem Lausitz</h1>
+            <p>Energiefluss-Diagramm</p>
+        </div>
+
+        <!-- Legende -->
+        <div class="legend">
+            <div class="legend-item"><div class="legend-line green"></div>Strom</div>
+            <div class="legend-item"><div class="legend-line yellow"></div>Wärme</div>
+            <div class="legend-item"><div class="legend-line grey"></div>Sonstige</div>
+        </div>
+    </div>
+
+    <script>
+        /* ============================================================
+           KONFIGURATION: KNOTEN (NODES) HINZUFÜGEN/ÄNDERN
+           ============================================================
+
+           So fügst du einen neuen Knoten hinzu:
+
+           1. Füge einen Eintrag zum 'nodes' Objekt hinzu:
+              meinNeuerKnoten: { label: "Mein Label", x: 0.5, y: 0.5, visible: true },
+
+           2. (Optional) Füge ein Emoji und eine CSS-Klasse hinzu:
+              - Für Emoji: Füge einen Eintrag zu 'nodeIcons' hinzu
+              - Für Glow-Effekt: Füge eine CSS-Klasse im <style> Bereich hinzu
+
+           Erklärung der Werte:
+           - label: Der Text, der unter dem Knoten angezeigt wird
+           - x: Position auf der X-Achse (0 = links, 1 = rechts)
+           - y: Position auf der Y-Achse (0 = oben, 1 = unten)
+           - visible: true = Knoten wird angezeigt, false = nur als Zwischenpunkt nutzen
+
+           x und y sind Prozentwerte (0.5 = 50%)
+        */
+
+        const container = document.getElementById("system");
+        const svg       = document.getElementById("grid");
+
+        const NODE_HALF = 40;  // Halbe Breite des Knotens für Linienglättung
+
+        // Icons für jeden Knoten (Emoji)
+        const nodeIcons = {
+            coal:      '🏭',
+            village:  '🏘️',
+            solar:     '☀️',
+            wind:      '🌬️',
+            gridNode:  '⚡',
+            external:  '🔌',
+            gas:       '🔥',
+            elektro:   '⚗️',
+            heatpump:  '🌡️'
+        };
+
+        // CSS-Klassen für Glow-Effekte
+        const nodeClasses = {
+            coal:      'node-coal',
+            village:   'node-village',
+            solar:     'node-solar',
+            wind:      'node-wind',
+            gridNode:  'node-gridNode',
+            external:  'node-external',
+            gas:       'node-gas',
+            elektro:   'node-elektro',
+            heatpump:  'node-heatpump'
+        };
+
+        // KNOTEN DEFINIEREN
+        const nodes = {
+            // Sichtbare Knoten (werden als Box angezeigt)
+            coal:        { label: "Kohlekraftwerk",       x: 0.10, y: 0.50, visible: true },
+            village:     { label: "Dorf",                 x: 0.38, y: 0.55, visible: true },
+            solar:       { label: "Solar",                x: 0.52, y: 0.58, visible: true },
+            wind:        { label: "Windrad",              x: 0.60, y: 0.67, visible: true },
+            gridNode:    { label: "Netzknoten",           x: 0.68, y: 0.50, visible: true },
+            external:    { label: "Stromnetzanschluss",   x: 0.68, y: 0.18, visible: true },
+            gas:         { label: "Gaskraftwerk",         x: 0.88, y: 0.30, visible: true },
+            elektro:     { label: "Elektrolyse",          x: 0.42, y: 0.82, visible: true },
+            heatpump:    { label: "Wärmepumpe",           x: 0.68, y: 0.88, visible: true },
+
+            // Unsichtbare Zwischenpunkte (für Linienführung)
+            r_coal_bend: { x: 0.28, y: 0.50 },  // Routen-Punkt für Kohle
+            r_top_left:  { x: 0.38, y: 0.38 },  // Oben links
+            r_top_right: { x: 0.68, y: 0.38 },  // Oben rechts
+            r_solar_mid: { x: 0.52, y: 0.38 },  // Bei Solar
+            r_elek_mid:  { x: 0.42, y: 0.68 },  // Bei Elektrolyse
+            r_heat_mid:  { x: 0.68, y: 0.68 },  // Bei Wärme
+            r_gas_bend:  { x: 0.88, y: 0.50 },  // Routen-Punkt für Gas
+        };
+
+        /* ============================================================
+           KONFIGURATION: KANTEN (EDGES/VERBINDUNGEN) HINZUFÜGEN/ÄNDERN
+           ============================================================
+
+           So fügst du eine neue Verbindung hinzu:
+
+           { from: "knoten1", to: "knoten2", color: "farbe", flow: true/false }
+
+           Erklärung der Werte:
+           - from: ID des Start-Knotens (muss in 'nodes' definiert sein)
+           - to:   ID des Ziel-Knotens (muss in 'nodes' definiert sein)
+           - color: Farbe der Linie:
+              * "green"  = Strom
+              * "yellow" = Wärme
+              * "grey"   = Sonstiges
+              * ["green", "yellow"] = Zwei parallele Linien
+           - flow: Linien-Animation aktivieren?
+              * true  = Animation in Pfeilrichtung
+              * false = Keine Animation
+              * [true, false] = Für zwei Farben: erste animiert, zweite nicht
+
+           Optional:
+           - rev: Richtung der Animation
+              * false (Standard) = vorwärts
+              * true = rückwärts
+              * [false, true] = Für zwei Farben unterschiedlich
+        */
+
+        const edges = [
+            // Kohle -> Netzknoten (grau, keine Animation)
+            { from: "coal",        to: "r_coal_bend", color: "grey",             flow: false },
+            { from: "r_coal_bend", to: "r_top_left",  color: "grey",             flow: false },
+
+            // Über Solar nach Netzknoten (grün + gelb, beide animiert)
+            { from: "r_top_left",  to: "r_solar_mid", color: ["green","yellow"], flow: [true,true] },
+            { from: "r_solar_mid", to: "r_top_right", color: ["green","yellow"], flow: [true,true] },
+            { from: "r_top_right", to: "gridNode",    color: ["green","yellow"], flow: [true,true] },
+
+            // Zum Dorf (grau)
+            { from: "r_top_left",  to: "village",     color: "grey",             flow: false },
+
+            // Dorf -> Elektrolyse (grau)
+            { from: "village",     to: "r_elek_mid",  color: "grey",             flow: false },
+
+            // Solar direkt (grün + gelb)
+            { from: "solar",       to: "r_solar_mid", color: ["green","yellow"], flow: [true,true] },
+
+            // Wind -> Netzknoten (grau + gelb, nur gelb animiert)
+            { from: "wind",        to: "gridNode",    color: ["grey","yellow"],  flow: [false,true] },
+
+            // Netzknoten -> Extern (grün + gelb, beide animiert, gelbe rückwärts)
+            { from: "gridNode",    to: "external",    color: ["green","yellow"], flow: [true,true], rev: [false,true] },
+
+            // Gas -> Netzknoten (grün)
+            { from: "gas",         to: "r_gas_bend",  color: "green",            flow: false },
+            { from: "r_gas_bend",  to: "gridNode",    color: "green",            flow: false },
+
+            // Wärmeverteilung (gelb, animiert)
+            { from: "gridNode",    to: "r_heat_mid",  color: "yellow",           flow: true },
+            { from: "r_heat_mid",  to: "r_elek_mid",  color: "yellow",           flow: true },
+            { from: "r_elek_mid",  to: "elektro",     color: "yellow",           flow: true },
+            { from: "r_heat_mid",  to: "heatpump",    color: "yellow",           flow: false },
+        ];
+
+
+        /* ============================================================
+           INTERNE FUNKTIONEN (bitte nicht ändern)
+           ============================================================ */
+
+        // Berechnet wo eine Linie am Knoten enden soll
+        function clipToNode(cx, cy, ox, oy) {
+            const dx = cx - ox, dy = cy - oy;
+            const adx = Math.abs(dx), ady = Math.abs(dy);
+            let t = adx >= ady
+                ? (adx - NODE_HALF) / adx
+                : (ady - NODE_HALF) / ady;
+            t = Math.max(0, Math.min(1, t));
+            return { x: ox + dx * t, y: oy + dy * t };
+        }
+
+        // Zeichnet eine einzelne Verbindung
+        function drawEdge(e, W, H) {
+            const n1 = nodes[e.from], n2 = nodes[e.to];
+            if (!n1 || !n2) return;
+
+            const colors = Array.isArray(e.color) ? e.color : [e.color];
+            const flows  = Array.isArray(e.flow)  ? e.flow  : colors.map(() => e.flow ?? false);
+            const revs   = Array.isArray(e.rev)   ? e.rev   : colors.map(() => false);
+            const N = colors.length;
+            const perStripe = N === 1 ? 7 : 6;
+
+            const cx1 = n1.x * W, cy1 = n1.y * H;
+            const cx2 = n2.x * W, cy2 = n2.y * H;
+
+            const p1 = n1.visible ? clipToNode(cx1, cy1, cx2, cy2) : { x: cx1, y: cy1 };
+            const p2 = n2.visible ? clipToNode(cx2, cy2, cx1, cy1) : { x: cx2, y: cy2 };
+
+            const dx = p2.x - p1.x, dy = p2.y - p1.y;
+            const len = Math.sqrt(dx*dx + dy*dy) || 1;
+            const px = -dy / len, py = dx / len;
+
+            for (let i = 0; i < N; i++) {
+                const offset = (i - (N - 1) / 2) * perStripe;
+                const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                line.setAttribute("x1", p1.x + px * offset);
+                line.setAttribute("y1", p1.y + py * offset);
+                line.setAttribute("x2", p2.x + px * offset);
+                line.setAttribute("y2", p2.y + py * offset);
+                line.setAttribute("stroke-width", perStripe - (N > 1 ? 1.5 : 0));
+                let cls = "line " + colors[i];
+                if (flows[i]) cls += revs[i] ? " flow-rev" : " flow";
+                line.setAttribute("class", cls);
+                svg.appendChild(line);
+            }
+        }
+
+        // Zeichnet alle Knoten
+        function renderNodes() {
+            document.querySelectorAll(".node").forEach(n => n.remove());
+            for (const id in nodes) {
+                const n = nodes[id];
+                if (!n.visible) continue;
+                const wrap = document.createElement("div");
+                wrap.className = "node " + (nodeClasses[id] || '');
+                wrap.style.left = (n.x * 100) + "%";
+                wrap.style.top  = (n.y * 100) + "%";
+                const vis = document.createElement("div");
+                vis.className = "node-visual";
+                vis.innerHTML = '<span class="node-icon">' + (nodeIcons[id] || '⬡') + '</span>';
+                const lbl = document.createElement("div");
+                lbl.className = "node-label";
+                lbl.textContent = n.label || "";
+                wrap.appendChild(vis);
+                wrap.appendChild(lbl);
+                container.appendChild(wrap);
+            }
+        }
+
+        // Zeichnet das gesamte Diagramm neu (bei Fenstergrößenänderung)
+        function draw() {
+            svg.innerHTML = "";
+            const W = container.clientWidth, H = container.clientHeight;
+            edges.forEach(e => drawEdge(e, W, H));
+        }
+
+        // Initialisierung
+        renderNodes();
+        draw();
+        window.addEventListener("resize", draw);
+    </script>
+</body>
+</html>
