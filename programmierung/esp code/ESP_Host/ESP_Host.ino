@@ -369,7 +369,6 @@ void handleForward() {
     } else {
       server.send(504, "application/json", "{\"code\":504,\"body\":{\"error\":\"RS232 Timeout\"}}");
     }
-    }
   } else {
     // Motor/Wind-Befehle: kein Ack-Wait nötig
     server.send(200, "application/json", "{\"code\":200,\"body\":\"ok\"}");
