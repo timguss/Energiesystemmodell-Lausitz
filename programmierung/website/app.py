@@ -39,6 +39,10 @@ def dashboard():
     from config import HOST
     return render_template("dashboard.html", host=HOST)
 
+@app.route("/fluesse")
+def fluesse():
+    return render_template("fluesse.html")
+
 # ============================================================================
 # MAIN
 # ============================================================================
