@@ -960,19 +960,22 @@
   // ============================================================================
   // TOUCH SWIPE SCROLL (for touchscreen displays)
   // ============================================================================
-  // Enables smooth swipe-up/down scrolling without relying on the scrollbar.
+  // Enables smooth swipe-up/down scrolling. touchmove is NON-passive so we
+  // can call preventDefault() to block text-selection during a drag.
   (function initTouchScroll() {
     let touchStartY = 0;
     let touchStartScrollY = 0;
     let lastTouchY = 0;
     let velocity = 0;
     let animFrame = null;
+    let isDragging = false;
 
     document.addEventListener('touchstart', function (e) {
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'LABEL' || tag === 'SELECT') return;
       if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
 
+      isDragging = false;
       touchStartY = e.touches[0].clientY;
       touchStartScrollY = window.scrollY;
       lastTouchY = touchStartY;
@@ -985,13 +988,23 @@
 
       const currentY = e.touches[0].clientY;
       const deltaY = touchStartY - currentY;
+
+      // Only start dragging after a minimum movement to distinguish from taps
+      if (!isDragging && Math.abs(deltaY) < 5) return;
+      isDragging = true;
+
+      // Prevent text selection and default browser scroll behaviour
+      e.preventDefault();
+
       velocity = lastTouchY - currentY;
       lastTouchY = currentY;
 
       window.scrollTo(0, touchStartScrollY + deltaY);
-    }, { passive: true });
+    }, { passive: false }); // Must be false to allow preventDefault()
 
     document.addEventListener('touchend', function () {
+      if (!isDragging) return;
+      isDragging = false;
       let mom = velocity;
       function momentum() {
         if (Math.abs(mom) < 0.5) return;

@@ -61,6 +61,23 @@ const int windPin = 27;
 bool isRunning = false;
 
 // ============================================================================
+// TEMPERATUR (NTC)
+// ============================================================================
+const int adcPin1 = 34;
+const int adcPin2 = 35;
+const float Vcc = 3.3, Rf = 10000.0, R0 = 10000.0, T0_K = 298.15, beta = 3950.0;
+float cachedTemp1 = NAN, cachedTemp2 = NAN;
+unsigned long lastTempMillis = 0;
+
+float readR_NTC(int pin) {
+  float v = (analogRead(pin) / 4095.0f) * Vcc;
+  if (v <= 0.0001f) return 1e9f;
+  if (v >= Vcc - 0.0001f) return 1e-6f;
+  return Rf * (v / (Vcc - v));
+}
+float ntcToCelsius(float R) { return 1.0f / ((1.0f / T0_K) + (1.0f / beta) * logf(R / R0)) - 273.15f; }
+
+// ============================================================================
 // ESP-NOW STRUKTUREN
 // ============================================================================
 typedef struct __attribute__((packed)) {
@@ -96,13 +113,16 @@ void sendStatus() {
   memset(&msg, 0, sizeof(msg));
   strlcpy(msg.device, "esp3", sizeof(msg.device));
   msg.relay_count  = RELAY_COUNT;
-  msg.sensor_count = 0;
+  msg.sensor_count = 2;
   for (int i = 0; i < RELAY_COUNT; i++)
     msg.relays[i] = physToLogical(digitalRead(RELAYS[i].pin), RELAYS[i].activeLow);
   msg.pwm     = (int16_t)pwmValue;
   msg.forward = motorForward ? 1 : 0;
   msg.running = isRunning   ? 1 : 0;
-  msg.temp    = NAN;
+  
+  msg.sensors[0] = cachedTemp1;
+  msg.sensors[1] = cachedTemp2;
+  msg.temp = cachedTemp1; // Fallback for general temp field
 
   esp_now_send(BROADCAST, (uint8_t*)&msg, sizeof(msg));
 }
@@ -117,6 +137,7 @@ void onReceive(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
 
   if (strcmp(msg.cmd, "RELAY") == 0) {
     int idx = msg.idx, val = msg.val;
+    Serial.printf("[CMD] RELAY Received: idx=%d, val=%d\n", idx, val);
     if (idx >= 0 && idx < RELAY_COUNT) {
       digitalWrite(RELAYS[idx].pin, logicalToPhys(val, RELAYS[idx].activeLow));
       Serial.printf("Relay %d (%s) → %s\n", idx, RELAYS[idx].name, val ? "AN" : "AUS");
@@ -125,10 +146,12 @@ void onReceive(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
 
   } else if (strcmp(msg.cmd, "TRAIN") == 0) {
     // val = PWM, extra = Richtung (1=vorwärts, 0=rückwärts)
+    Serial.printf("[CMD] TRAIN Received: pwm=%d, dir=%d\n", msg.val, msg.extra);
     setMotor(msg.val, msg.extra != 0);
     sendStatus();
 
   } else if (strcmp(msg.cmd, "WIND") == 0) {
+    Serial.printf("[CMD] WIND Received: val=%d\n", msg.val);
     isRunning = (msg.val != 0);
     digitalWrite(windPin, isRunning ? HIGH : LOW);
     Serial.printf("Wind (Pin %d) → %s\n", windPin, isRunning ? "AN" : "AUS");
@@ -160,6 +183,10 @@ void setup() {
   }
   stopMotor();
 
+  // ADC Setup
+  analogReadResolution(12);
+  analogSetAttenuation(ADC_11db);
+
   // ESP-NOW
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
@@ -189,10 +216,36 @@ void setup() {
 // LOOP
 // ============================================================================
 void loop() {
+  unsigned long now = millis();
+
+  // Temperatur alle 1 Sekunde
+  if (now - lastTempMillis >= 1000) {
+    lastTempMillis = now;
+    cachedTemp1 = ntcToCelsius(readR_NTC(adcPin1));
+    cachedTemp2 = ntcToCelsius(readR_NTC(adcPin2));
+    
+    // Debug output periodically
+    static unsigned long lastDebug = 0;
+    if (now - lastDebug >= 5000) {
+      lastDebug = now;
+      Serial.printf("Temp1: %.2f C, Temp2: %.2f C\n", cachedTemp1, cachedTemp2);
+    }
+  }
+
   // Heartbeat alle 2 Sekunden
   static unsigned long lastHeartbeat = 0;
-  if (millis() - lastHeartbeat >= 2000) {
-    lastHeartbeat = millis();
+  if (now - lastHeartbeat >= 2000) {
+    lastHeartbeat = now;
     sendStatus();
   }
+
+  // Periodic Logging alle 1 Sekunde
+  static unsigned long lastLog = 0;
+  if (now - lastLog >= 1000) {
+    lastLog = now;
+    Serial.print("[LOG] Relais: ");
+    for (int i=0; i<RELAY_COUNT; i++) Serial.print(physToLogical(digitalRead(RELAYS[i].pin), RELAYS[i].activeLow));
+    Serial.printf(" | Temp1: %.2f C | Temp2: %.2f C | PWM: %d | Wind: %d\n", cachedTemp1, cachedTemp2, pwmValue, isRunning);
+  }
 }
+

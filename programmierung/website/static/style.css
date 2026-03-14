@@ -10,6 +10,13 @@ html, body {
   touch-action: pan-y;
 }
 
+/* Prevent text selection when swiping on touchscreens.
+   Inputs and textareas are explicitly excluded so they still work. */
+*:not(input):not(textarea) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 /* Always-visible scrollbar (Chromium/Raspberry Pi) */
 ::-webkit-scrollbar {
   width: 10px;

@@ -97,6 +97,7 @@ void onReceive(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
   memcpy(&msg, data, sizeof(msg));
 
   if (strcmp(msg.cmd, "RELAY") == 0) {
+    Serial.printf("[CMD] RELAY Received: idx=%d, val=%d\n", msg.idx, msg.val);
     setRelay(msg.idx, msg.val);
     Serial.printf("Relay %d (%s) → %s\n", msg.idx, relayNames[msg.idx], msg.val ? "AN" : "AUS");
     sendStatus();
@@ -163,5 +164,14 @@ void loop() {
   if (now - lastHeartbeat >= 2000) {
     lastHeartbeat = now;
     sendStatus();
+  }
+
+  // Periodic Logging alle 1 Sekunde
+  static unsigned long lastLog = 0;
+  if (now - lastLog >= 1000) {
+    lastLog = now;
+    Serial.print("[LOG] Relais: ");
+    for (int i=0; i<RELAY_COUNT; i++) Serial.print(getRelay(i));
+    Serial.printf(" | Temp: %.2f C\n", cachedTempC);
   }
 }

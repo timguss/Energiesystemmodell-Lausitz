@@ -166,16 +166,21 @@
   </div>
 
   <div class="card" id="card_temp">
-    <div class="grid">
+    <div class="grid" style="grid-template-columns: repeat(3, 1fr); gap: 15px;">
       <div>
-        <div class="section-title">ESP1 — Temperatur</div>
+        <div class="section-title">ESP1 — Gas</div>
         <div>Temp: <span id="temp1">--</span> °C</div>
-        <div>R_ntc: <span id="rntc1">--</span> Ω</div>
+        <div class="small">R_ntc: <span id="rntc1">--</span> Ω</div>
       </div>
       <div>
-        <div class="section-title">ESP2 — Temperatur</div>
+        <div class="section-title">ESP2 — Kohle</div>
         <div>Temp: <span id="temp2">--</span> °C</div>
-        <div>R_ntc: <span id="rntc2">--</span> Ω</div>
+        <div class="small">R_ntc: <span id="rntc2">--</span> Ω</div>
+      </div>
+      <div>
+        <div class="section-title">ESP3 — Wärmepumpe</div>
+        <div>Temp 1: <span id="temp3_1">--</span> °C</div>
+        <div>Temp 2: <span id="temp3_2">--</span> °C</div>
       </div>
     </div>
   </div>

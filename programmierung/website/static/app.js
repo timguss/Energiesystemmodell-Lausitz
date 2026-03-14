@@ -661,6 +661,15 @@
 
   function updateTemps(device, state) {
     if (!state) return;
+
+    if (device === 'esp3') {
+      if (state.sensors) {
+        safeSetText('temp3_1', (state.sensors[0] !== undefined && state.sensors[0] !== null) ? Number(state.sensors[0]).toFixed(2) : '--');
+        safeSetText('temp3_2', (state.sensors[1] !== undefined && state.sensors[1] !== null) ? Number(state.sensors[1]).toFixed(2) : '--');
+      }
+      return;
+    }
+
     const suffix = device === 'esp1' ? '1' : '2';
 
     if (state.temp !== undefined) {
@@ -730,6 +739,7 @@
         await initDeviceRelays('esp3', state3);
         refreshRelayCheckboxes('esp3', state3);
         updateEsp3LegacyUI(state3);
+        updateTemps('esp3', state3);
       }
     }
   }
@@ -785,20 +795,22 @@
   // ============================================================================
   // TOUCH SWIPE SCROLL (for touchscreen displays)
   // ============================================================================
-  // Enables smooth swipe-up/down scrolling without relying on the scrollbar.
+  // Enables smooth swipe-up/down scrolling. touchmove is NON-passive so we
+  // can call preventDefault() to block text-selection during a drag.
   (function initTouchScroll() {
     let touchStartY = 0;
     let touchStartScrollY = 0;
     let lastTouchY = 0;
     let velocity = 0;
     let animFrame = null;
+    let isDragging = false;
 
     document.addEventListener('touchstart', function (e) {
-      // Only handle single-finger touch that isn't on an interactive element
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'LABEL' || tag === 'SELECT') return;
       if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
 
+      isDragging = false;
       touchStartY = e.touches[0].clientY;
       touchStartScrollY = window.scrollY;
       lastTouchY = touchStartY;
@@ -811,13 +823,23 @@
 
       const currentY = e.touches[0].clientY;
       const deltaY = touchStartY - currentY;
-      velocity = lastTouchY - currentY; // velocity for momentum
+
+      // Only start dragging after a minimum movement to distinguish from taps
+      if (!isDragging && Math.abs(deltaY) < 5) return;
+      isDragging = true;
+
+      // Prevent text selection and default browser scroll behaviour
+      e.preventDefault();
+
+      velocity = lastTouchY - currentY;
       lastTouchY = currentY;
 
       window.scrollTo(0, touchStartScrollY + deltaY);
-    }, { passive: true });
+    }, { passive: false }); // Must be false to allow preventDefault()
 
     document.addEventListener('touchend', function () {
+      if (!isDragging) return;
+      isDragging = false;
       // Momentum scrolling after finger lift
       let mom = velocity;
       function momentum() {

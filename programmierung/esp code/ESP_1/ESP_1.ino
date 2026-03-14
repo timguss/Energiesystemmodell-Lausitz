@@ -106,6 +106,7 @@ void onReceive(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
 
   if (strcmp(msg.cmd, "RELAY") == 0) {
     int idx = msg.idx, val = msg.val;
+    Serial.printf("[CMD] RELAY Received: idx=%d, val=%d\n", idx, val);
     if (idx >= 0 && idx < RELAY_COUNT) {
       digitalWrite(RELAYS[idx].pin, logicalToPhys(val));
       Serial.printf("Relay %d (%s) → %s\n", idx, RELAYS[idx].title, val ? "AN" : "AUS");
@@ -113,6 +114,7 @@ void onReceive(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
     }
   } else if (strcmp(msg.cmd, "RS232") == 0) {
     // RS232-Kommando (z.B. für MFC)
+    Serial.printf("[CMD] RS232 Received: %s\n", msg.payload);
     Serial.print("RS232 Senden: ");
     Serial.print(msg.payload);
     Serial.println("\\r\\n");
@@ -215,5 +217,14 @@ void loop() {
   if (now - lastHeartbeat >= 2000) {
     lastHeartbeat = now;
     sendStatus();
+  }
+
+  // Periodic Logging alle 1 Sekunde
+  static unsigned long lastLog = 0;
+  if (now - lastLog >= 1000) {
+    lastLog = now;
+    Serial.print("[LOG] Relais: ");
+    for (int i=0; i<RELAY_COUNT; i++) Serial.print(physToLogical(digitalRead(RELAYS[i].pin)));
+    Serial.printf(" | Temp: %.2f C\n", cachedTempC);
   }
 }

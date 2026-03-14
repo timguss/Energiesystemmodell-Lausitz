@@ -93,6 +93,8 @@ SENSOR_CONFIG = {
     108: {"device": "esp4", "state_path": "sensors.3.pressure", "name": "Abstand 1",      "unit": "cm",   "target_card": "electro"},
     109: {"device": "esp4", "state_path": "sensors.4.pressure", "name": "Abstand 2",      "unit": "cm",   "target_card": "electro"},
     110: {"device": "esp4", "state_path": "flow",               "name": "Durchfluss",     "unit": "L/min","target_card": "electro"},
+    111: {"device": "esp3", "state_path": "sensors.0",          "name": "temp1",          "unit": "°C",   "target_card": "lake"},
+    112: {"device": "esp3", "state_path": "sensors.1",          "name": "temp2",          "unit": "°C",   "target_card": "lake"},
 }
 
 # ============================================================================

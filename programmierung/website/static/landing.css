@@ -47,6 +47,13 @@ body {
     touch-action: pan-y;
 }
 
+/* Prevent text selection when swiping on touchscreens.
+   Inputs and textareas are explicitly excluded so they still work. */
+*:not(input):not(textarea) {
+    -webkit-user-select: none;
+    user-select: none;
+}
+
 .container {
     max-width: var(--container-width);
     margin: 0 auto;

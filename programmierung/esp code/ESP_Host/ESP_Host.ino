@@ -56,6 +56,7 @@ typedef struct __attribute__((packed)) {
   int16_t pwm;              // Motor-PWM (nur ESP3)
   int8_t  forward;          // Motor-Richtung (nur ESP3)
   int8_t  running;          // Wind-Status (nur ESP3)
+  int8_t  relay_count;      // Anzahl verfügbarer Relais
   int8_t  sensor_count;     // Anzahl gültiger Sensoren
   uint8_t rs232_seq;        // Sequenznummer für RS232-Antworten
   char    last_rs232_res[64]; // Letzte RS232-Antwort
@@ -409,7 +410,13 @@ void handleDeviceState() {
     json += "\"running\":" + String(s.running ? "true" : "false") + ",";
     json += "\"pwm\":" + String(s.pwm) + ",";
     json += "\"forward\":" + String(s.forward ? "true" : "false") + ",";
-    json += "\"relays\":[";
+    json += "\"temp\":" + (isnan(s.temp) ? String("null") : String(s.temp, 2)) + ",";
+    json += "\"sensors\":[";
+    for (int i = 0; i < s.sensor_count; i++) {
+      json += String(s.sensors[i], 2);
+      if (i < s.sensor_count - 1) json += ",";
+    }
+    json += "],\"relays\":[";
     for (int i = 0; i < s.relay_count; i++) {
       json += String(s.relays[i]);
       if (i < s.relay_count - 1) json += ",";
