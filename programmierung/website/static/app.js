@@ -782,4 +782,52 @@
     pollLoop();
   }, App.config.POLL_INTERVAL);
 
+  // ============================================================================
+  // TOUCH SWIPE SCROLL (for touchscreen displays)
+  // ============================================================================
+  // Enables smooth swipe-up/down scrolling without relying on the scrollbar.
+  (function initTouchScroll() {
+    let touchStartY = 0;
+    let touchStartScrollY = 0;
+    let lastTouchY = 0;
+    let velocity = 0;
+    let animFrame = null;
+
+    document.addEventListener('touchstart', function (e) {
+      // Only handle single-finger touch that isn't on an interactive element
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'LABEL' || tag === 'SELECT') return;
+      if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+
+      touchStartY = e.touches[0].clientY;
+      touchStartScrollY = window.scrollY;
+      lastTouchY = touchStartY;
+      velocity = 0;
+    }, { passive: true });
+
+    document.addEventListener('touchmove', function (e) {
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'LABEL' || tag === 'SELECT') return;
+
+      const currentY = e.touches[0].clientY;
+      const deltaY = touchStartY - currentY;
+      velocity = lastTouchY - currentY; // velocity for momentum
+      lastTouchY = currentY;
+
+      window.scrollTo(0, touchStartScrollY + deltaY);
+    }, { passive: true });
+
+    document.addEventListener('touchend', function () {
+      // Momentum scrolling after finger lift
+      let mom = velocity;
+      function momentum() {
+        if (Math.abs(mom) < 0.5) return;
+        window.scrollBy(0, mom);
+        mom *= 0.92; // friction factor
+        animFrame = requestAnimationFrame(momentum);
+      }
+      animFrame = requestAnimationFrame(momentum);
+    }, { passive: true });
+  })();
+
 })();

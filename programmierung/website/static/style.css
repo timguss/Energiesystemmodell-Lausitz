@@ -1,10 +1,26 @@
 /* style.css — Styles for Central UI */
 
-body {
+html, body {
   font-family: Arial, sans-serif;
   margin: 12px;
   background: #f4f6f8;
   color: #111;
+  /* Enable smooth touch/swipe scrolling on touchscreens */
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+/* Always-visible scrollbar (Chromium/Raspberry Pi) */
+::-webkit-scrollbar {
+  width: 10px;
+  background: #e0e0e0;
+}
+::-webkit-scrollbar-thumb {
+  background: #aaa;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:active {
+  background: #777;
 }
 
 .dashboard-header {

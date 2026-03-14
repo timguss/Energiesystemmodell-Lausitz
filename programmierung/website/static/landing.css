@@ -42,6 +42,9 @@ body {
     color: var(--text-primary);
     line-height: 1.6;
     overflow-x: hidden;
+    /* Enable smooth touch/swipe scrolling on touchscreens */
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
 }
 
 .container {
