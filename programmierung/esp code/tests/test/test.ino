@@ -1,7 +1,7 @@
 #include <FastLED.h>
 
 #define LED_PIN 18
-#define NUM_LEDS 240
+#define NUM_LEDS 300
 
 CRGB leds[NUM_LEDS];
 
