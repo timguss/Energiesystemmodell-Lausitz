@@ -1,7 +1,97 @@
 const container = document.getElementById("system");
 const svg       = document.getElementById("grid");
+const modalOverlay = document.getElementById("modal-overlay");
+const modalClose = document.getElementById("modal-close");
 
 const NODE_HALF = 40;
+
+// Node details for modal
+const nodeDetails = {
+    coal: {
+        subtitle: "Kraftwerk",
+        description: "Das Kohlekraftwerk ist eine traditionelle Energieerzeugungsanlage, die Kohle zur Stromproduktion verwendet. Es verfügt über mehrere Relais zur Steuerung der Verbrennungsprozesse, Kühlung und Turbine.",
+        scenarios: [
+            { name: "Starten", desc: "Kraftwerk hochfahren" },
+            { name: "Stoppen", desc: "Kraftwerk herunterfahren" },
+            { name: "Testlauf", desc: "Alle Systeme testen" },
+            { name: "Not-Aus", desc: "Sofortige Abschaltung" }
+        ]
+    },
+    village: {
+        subtitle: "Wohngebiet",
+        description: "Das Dorf repräsentiert den lokalen Energieverbrauch. Hier werden Haushalte mit Strom und Wärme versorgt. Der Energiebedarf variiert je nach Tageszeit und Jahreszeit.",
+        scenarios: [
+            { name: "Nachtmodus", desc: "Reduzierte Versorgung" },
+            { name: "Tagmodus", desc: "Normale Versorgung" },
+            { name: "Spitzenlast", desc: "Hoher Energiebedarf" }
+        ]
+    },
+    solar: {
+        subtitle: "Photovoltaik",
+        description: "Die Solarenergieanlage wandelt Sonnenlicht direkt in elektrische Energie um. Die Leistung ist stark abhängig von der Sonneneinstrahlung und Wetterbedingungen.",
+        scenarios: [
+            { name: "Aktivieren", desc: "Einspeisung starten" },
+            { name: "Deaktivieren", desc: "Einspeisung stoppen" },
+            { name: "Maximum", desc: "Volle Leistung" }
+        ]
+    },
+    wind: {
+        subtitle: "Windkraft",
+        description: "Die Windkraftanlage nutzt die Windenergie zur Stromerzeugung. Die Leistung ist abhängig von der Windgeschwindigkeit und kann stark schwanken.",
+        scenarios: [
+            { name: "Starten", desc: "Turbine starten" },
+            { name: "Stoppen", desc: "Turbine stoppen" },
+            { name: "Leerlauf", desc: "Minimaler Betrieb" }
+        ]
+    },
+    gridNode: {
+        subtitle: "Verteilung",
+        description: "Der Netzknoten ist das Herz der Energieverteilung. Hier werden alle Energieflüsse zusammengeführt und an die Verbraucher verteilt.",
+        scenarios: [
+            { name: "Ausbalancieren", desc: "Netz optimieren" },
+            { name: "Notfall", desc: "Sicherheitsmodus" },
+            { name: "Diagnose", desc: "Netzwerk prüfen" }
+        ]
+    },
+    external: {
+        subtitle: "Übertragung",
+        description: "Der Stromnetzanschluss verbindet das lokale Energiesystem mit dem überregionalen Stromnetz. Überschüssige Energie kann eingespeist oder bezogen werden.",
+        scenarios: [
+            { name: "Einspeisen", desc: "Energie abgeben" },
+            { name: "Beziehen", desc: "Energie aufnehmen" },
+            { name: "Isoliert", desc: "Autark betreiben" }
+        ]
+    },
+    gas: {
+        subtitle: "Kraftwerk",
+        description: "Das Gaskraftwerk nutzt Erdgas zur Stromerzeugung. Es ist flexibel und kann schnell hoch- und heruntergefahren werden.",
+        scenarios: [
+            { name: "Zünden", desc: "Anfahren" },
+            { name: "Abstellen", desc: "Herunterfahren" },
+            { name: "Teillast", desc: "Reduzierte Leistung" },
+            { name: "Volllast", desc: "Maximale Leistung" }
+        ]
+    },
+    elektro: {
+        subtitle: "Wasserstoff",
+        description: "Die Elektrolyseanlage erzeugt Wasserstoff durch Spaltung von Wasser mittels elektrischer Energie.",
+        scenarios: [
+            { name: "Starten", desc: "Produktion beginnen" },
+            { name: "Stoppen", desc: "Produktion beenden" },
+            { name: "Sparmodus", desc: "Minimaler Betrieb" }
+        ]
+    },
+    heatpump: {
+        subtitle: "Heizung",
+        description: "Die Wärmepumpe nutzt Umweltwärme zur Erzeugung von Heizwärme. Sie ist eine effiziente Methode zur Gebäudeheizung.",
+        scenarios: [
+            { name: "Heizen", desc: "Heizbetrieb starten" },
+            { name: "Kühlen", desc: "Kühlbetrieb aktivieren" },
+            { name: "Standby", desc: "Bereitschaftsmodus" },
+            { name: "Abtauen", desc: "Frostschutz" }
+        ]
+    }
+};
 
 // Icons for each node type
 const nodeIcons = {
@@ -122,6 +212,7 @@ function renderNodes() {
         wrap.className = "node " + (nodeClasses[id] || '');
         wrap.style.left = (n.x * 100) + "%";
         wrap.style.top  = (n.y * 100) + "%";
+        wrap.dataset.nodeId = id;
         const vis = document.createElement("div");
         vis.className = "node-visual";
         vis.innerHTML = '<span class="node-icon">' + (nodeIcons[id] || '⬡') + '</span>';
@@ -130,9 +221,56 @@ function renderNodes() {
         lbl.textContent = n.label || "";
         wrap.appendChild(vis);
         wrap.appendChild(lbl);
+
+        // Click handler for modal
+        wrap.addEventListener("click", () => openModal(id));
+
         container.appendChild(wrap);
     }
 }
+
+// Modal functions
+function openModal(nodeId) {
+    const details = nodeDetails[nodeId];
+    if (!details) return;
+
+    // Fill modal content
+    document.getElementById("modal-icon").textContent = nodeIcons[nodeId] || '⬡';
+    document.getElementById("modal-title").textContent = nodes[nodeId]?.label || nodeId;
+    document.getElementById("modal-subtitle").textContent = details.subtitle;
+    document.getElementById("modal-visual-icon").textContent = nodeIcons[nodeId] || '⬡';
+    document.getElementById("modal-visual-label").textContent = nodes[nodeId]?.label || nodeId;
+    document.getElementById("modal-description").textContent = details.description;
+
+    // Fill scenario buttons
+    const scenarioContainer = document.getElementById("scenario-buttons");
+    scenarioContainer.innerHTML = '';
+    details.scenarios.forEach(scenario => {
+        const btn = document.createElement("button");
+        btn.className = "scenario-btn";
+        btn.innerHTML = `<span class="scenario-name">${scenario.name}</span><span class="scenario-desc">${scenario.desc}</span>`;
+        // Not linked yet - just visual
+        scenarioContainer.appendChild(btn);
+    });
+
+    // Show modal
+    modalOverlay.classList.add("active");
+    document.body.style.overflow = "hidden";
+}
+
+function closeModal() {
+    modalOverlay.classList.remove("active");
+    document.body.style.overflow = "";
+}
+
+// Modal event listeners
+modalClose.addEventListener("click", closeModal);
+modalOverlay.addEventListener("click", (e) => {
+    if (e.target === modalOverlay) closeModal();
+});
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeModal();
+});
 
 function draw() {
     svg.innerHTML = "";

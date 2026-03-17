@@ -24,6 +24,37 @@
             <div class="legend-item"><div class="legend-line yellow"></div>Wärme</div>
             <div class="legend-item"><div class="legend-line grey"></div>Sonstige</div>
         </div>
+
+        <!-- Modal Overlay -->
+        <div class="modal-overlay" id="modal-overlay">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">
+                        <span class="modal-icon" id="modal-icon">🏭</span>
+                        <div>
+                            <h2 id="modal-title">Kohlekraftwerk</h2>
+                            <div class="modal-subtitle" id="modal-subtitle">Kraftwerk</div>
+                        </div>
+                    </div>
+                    <button class="modal-close" id="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-visual">
+                        <div class="modal-visual-icon" id="modal-visual-icon">🏭</div>
+                        <div class="modal-visual-label" id="modal-visual-label">Kohlekraftwerk</div>
+                    </div>
+                    <div class="modal-content">
+                        <div class="modal-description" id="modal-description">
+                            Beschreibung wird geladen...
+                        </div>
+                        <div class="modal-section-title">Szenarien</div>
+                        <div class="scenario-buttons" id="scenario-buttons">
+                            <!-- Scenario buttons will be inserted here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     <script src="/static/fluesse.js"></script>
 </body>
