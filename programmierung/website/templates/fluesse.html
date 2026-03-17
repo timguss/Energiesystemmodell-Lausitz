@@ -19,10 +19,18 @@
             <h1>Energiesystem Lausitz</h1>
             <p>Energiefluss-Diagramm</p>
         </div>
-        <div class="legend">
-            <div class="legend-item"><div class="legend-line green"></div>Strom</div>
-            <div class="legend-item"><div class="legend-line yellow"></div>Wärme</div>
-            <div class="legend-item"><div class="legend-line grey"></div>Sonstige</div>
+        <div class="legend" id="system-legend">
+            <div class="legend-item active" id="legend-item-1"><div class="legend-line green" id="legend-line-1"></div><span id="legend-text-1">Stromerzeugung</span></div>
+            <div class="legend-item active" id="legend-item-2"><div class="legend-line yellow" id="legend-line-2"></div><span id="legend-text-2">Verteilung</span></div>
+            <div class="legend-item active"><div class="legend-line grey"></div>Passiv</div>
+        </div>
+        <div class="system-switch">
+            <button class="system-btn active" id="btn-power" onclick="setActiveSystem('power')">
+                <span class="btn-icon">⚡</span> Strom
+            </button>
+            <button class="system-btn" id="btn-heat" onclick="setActiveSystem('heat')">
+                <span class="btn-icon">🔥</span> Wärme
+            </button>
         </div>
 
         <!-- Modal Overlay -->
@@ -65,6 +73,9 @@
             </div>
         </div>
     </div>
-    <script src="/static/fluesse.js"></script>
+    <script src="/static/fluesse_config.js"></script>
+    <script src="/static/fluesse_utils.js"></script>
+    <script src="/static/fluesse_modal.js"></script>
+    <script src="/static/fluesse_core.js"></script>
 </body>
 </html>

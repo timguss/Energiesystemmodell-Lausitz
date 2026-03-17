@@ -111,7 +111,7 @@
         ]
     },
     "kohlekraftwerk_startup": {
-        "name": "Kohlekraftwerk Start - test",
+        "name": "Kohlekraftwerk Start",
         "description": "Fährt das Kohlekraftwerk hoch",
         "target_card": "coal",
         "actions": [
@@ -132,7 +132,7 @@
         ]
     },
     "kohlekraftwerk_shutdown": {
-        "name": "Kohlekraftwerk Stop - test",
+        "name": "Kohlekraftwerk Stop",
         "description": "Sicherer Stopp",
         "target_card": "coal",
         "actions": [
@@ -153,7 +153,7 @@
         ]
     },
     "test_sequenz": {
-        "name": "Test-Sequenz - test",
+        "name": "Test-Sequenz",
         "description": "Alle Test-Relays checken",
         "actions": [
             {
@@ -173,7 +173,7 @@
         ]
     },
     "elektrolyseur_an": {
-        "name": "Elektrolyseur an - test",
+        "name": "Elektrolyseur an",
         "description": "Elektrolyseur an",
         "target_card": "electro",
         "actions": [
@@ -190,7 +190,7 @@
         ]
     },
     "elektrolyseur_komplett_aus": {
-        "name": "Elektrolyseur aus - test",
+        "name": "Elektrolyseur aus",
         "description": "Elektrolyseur aus",
         "target_card": "electro",
         "actions": [
@@ -226,7 +226,7 @@
         ]
     },
     "elektrolyseur_in_brennstoffzelle": {
-        "name": "Elektrolyseur in Brennstoffzelle - test",
+        "name": "Elektrolyseur in Brennstoffzelle",
         "description": "Elektrolyseur in Brennstoffzelle",
         "target_card": "electro",
         "actions": [
@@ -248,7 +248,7 @@
         ]
     },
     "elektrolyseur_in_tank": {
-        "name": "Elektrolyseur in Tank - test",
+        "name": "Elektrolyseur in Tank",
         "description": "Elektrolyseur in Tank",
         "target_card": "electro",
         "actions": [
@@ -280,7 +280,7 @@
         ]
     },
     "tank_in_brennstoffzelle": {
-        "name": "Tank in Brennstoffzelle - test",
+        "name": "Tank in Brennstoffzelle",
         "description": "Tank in Brennstoffzelle",
         "target_card": "electro",
         "actions": [

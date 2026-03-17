@@ -1,0 +1,251 @@
+/**
+ * fluesse_core.js
+ * Core rendering logic and initialization of the flow system.
+ */
+
+const container = document.getElementById("system");
+const svg = document.getElementById("grid");
+
+// Current active system: 'power' or 'heat'
+let activeSystem = 'power';
+
+// Get current edge groups based on active system
+function getEdgeGroups() {
+  return activeSystem === 'heat' ? heatEdgeGroups : powerEdgeGroups;
+}
+
+// Draw all edges for a specific group - each color stripe has independent flow control
+function drawEdgeGroup(groupId, W, H) {
+  const groups = getEdgeGroups();
+  const group = groups[groupId];
+  if (!group) return;
+
+  const numColors = group.colors.length;
+  const perStripe = numColors === 1 ? 7 : 6;
+
+  // Draw each edge segment in the group
+  for (const e of group.edges) {
+    const n1 = nodes[e.from],
+      n2 = nodes[e.to];
+    if (!n1 || !n2) continue;
+
+    const cx1 = n1.x * W,
+      cy1 = n1.y * H;
+    const cx2 = n2.x * W,
+      cy2 = n2.y * H;
+
+    const p1 = n1.visible ? clipToNode(cx1, cy1, cx2, cy2) : { x: cx1, y: cy1 };
+    const p2 = n2.visible ? clipToNode(cx2, cy2, cx1, cy1) : { x: cx2, y: cy2 };
+
+    const dx = p2.x - p1.x,
+      dy = p2.y - p1.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const px = -dy / len,
+      py = dx / len;
+
+    // Draw each color stripe with its own flow state and direction
+    for (let i = 0; i < numColors; i++) {
+      const offset = (i - (numColors - 1) / 2) * perStripe;
+      const line = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "line",
+      );
+      line.setAttribute("x1", p1.x + px * offset);
+      line.setAttribute("y1", p1.y + py * offset);
+      line.setAttribute("x2", p2.x + px * offset);
+      line.setAttribute("y2", p2.y + py * offset);
+      line.setAttribute("stroke-width", perStripe - (numColors > 1 ? 1.5 : 0));
+
+      let cls = "line " + group.colors[i];
+      if (group.flows[i]) {
+        cls += group.revs[i] ? " flow-rev" : " flow";
+      }
+      line.setAttribute("class", cls);
+      svg.appendChild(line);
+    }
+  }
+}
+
+// Legacy function for individual edges (kept for compatibility)
+function drawEdge(e, W, H) {
+  const n1 = nodes[e.from],
+    n2 = nodes[e.to];
+  if (!n1 || !n2) return;
+
+  const colors = Array.isArray(e.color) ? e.color : [e.color];
+  const flows = Array.isArray(e.flow)
+    ? e.flow
+    : colors.map(() => e.flow ?? false);
+  const revs = Array.isArray(e.rev) ? e.rev : colors.map(() => false);
+  const N = colors.length;
+  const perStripe = N === 1 ? 7 : 6;
+
+  const cx1 = n1.x * W,
+    cy1 = n1.y * H;
+  const cx2 = n2.x * W,
+    cy2 = n2.y * H;
+
+  const p1 = n1.visible ? clipToNode(cx1, cy1, cx2, cy2) : { x: cx1, y: cy1 };
+  const p2 = n2.visible ? clipToNode(cx2, cy2, cx1, cy1) : { x: cx2, y: cy2 };
+
+  const dx = p2.x - p1.x,
+    dy = p2.y - p1.y;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const px = -dy / len,
+    py = dx / len;
+
+  for (let i = 0; i < N; i++) {
+    const offset = (i - (N - 1) / 2) * perStripe;
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", p1.x + px * offset);
+    line.setAttribute("y1", p1.y + py * offset);
+    line.setAttribute("x2", p2.x + px * offset);
+    line.setAttribute("y2", p2.y + py * offset);
+    line.setAttribute("stroke-width", perStripe - (N > 1 ? 1.5 : 0));
+    let cls = "line " + colors[i];
+    if (flows[i]) cls += revs[i] ? " flow-rev" : " flow";
+    line.setAttribute("class", cls);
+    svg.appendChild(line);
+  }
+}
+
+function renderNodes() {
+  document.querySelectorAll(".node").forEach((n) => n.remove());
+  for (const id in nodes) {
+    const n = nodes[id];
+    if (!n.visible) continue;
+    const wrap = document.createElement("div");
+    wrap.className = "node " + (nodeClasses[id] || "");
+    wrap.style.left = n.x * 100 + "%";
+    wrap.style.top = n.y * 100 + "%";
+    wrap.dataset.nodeId = id;
+    const vis = document.createElement("div");
+    vis.className = "node-visual";
+    vis.innerHTML =
+      '<span class="node-icon">' + (nodeIcons[id] || "⬡") + "</span>";
+    const lbl = document.createElement("div");
+    lbl.className = "node-label";
+    lbl.textContent = n.label || "";
+    wrap.appendChild(vis);
+    wrap.appendChild(lbl);
+
+    // Click handler for modal
+    wrap.addEventListener("click", () => openModal(id));
+
+    container.appendChild(wrap);
+  }
+}
+
+function draw() {
+  if (!svg || !container) return;
+  svg.innerHTML = "";
+  const W = container.clientWidth,
+    H = container.clientHeight;
+
+  // Update group states based on node conditions
+  updateEdgeGroupStates();
+
+  // Draw all edge groups
+  for (const groupId in getEdgeGroups()) {
+    drawEdgeGroup(groupId, W, H);
+  }
+}
+
+// Switch between power and heat systems
+function setActiveSystem(system) {
+  if (system !== 'power' && system !== 'heat') return;
+  activeSystem = system;
+
+  // Update button active states
+  const btnPower = document.getElementById('btn-power');
+  const btnHeat = document.getElementById('btn-heat');
+  if (btnPower && btnHeat) {
+    btnPower.classList.toggle('active', system === 'power');
+    btnHeat.classList.toggle('active', system === 'heat');
+  }
+
+  // Update subtitle
+  const subtitle = document.querySelector('.title-bar p');
+  if (subtitle) {
+    subtitle.textContent = system === 'power' ? 'Stromfluss-Diagramm' : 'Wärmefluss-Diagramm';
+  }
+
+  // Update legend
+  const line1 = document.getElementById('legend-line-1');
+  const text1 = document.getElementById('legend-text-1');
+  const line2 = document.getElementById('legend-line-2');
+  const text2 = document.getElementById('legend-text-2');
+
+  if (line1 && text1 && line2 && text2) {
+    if (system === 'power') {
+      line1.className = 'legend-line green';
+      text1.textContent = 'Erzeugung';
+      line2.className = 'legend-line yellow';
+      text2.textContent = 'Verteilung';
+    } else {
+      line1.className = 'legend-line blue';
+      text1.textContent = 'Erzeuger';
+      line2.className = 'legend-line red';
+      text2.textContent = 'Netz';
+    }
+  }
+
+  draw();
+}
+
+function getActiveSystem() {
+  return activeSystem;
+}
+
+// Utility functions to control edge groups externally
+
+// Set all color stripes in a group to the same state
+function setEdgeGroupActive(groupId, active, rev = false) {
+  const groups = getEdgeGroups();
+  if (!groups[groupId]) return;
+  const group = groups[groupId];
+  group.flows = group.colors.map(() => active);
+  group.revs = group.colors.map(() => rev);
+  draw();
+}
+
+// Control a specific color stripe within a group
+function setEdgeGroupColorState(groupId, colorIndex, active, rev = false) {
+  const groups = getEdgeGroups();
+  if (!groups[groupId]) return;
+  const group = groups[groupId];
+  if (colorIndex < 0 || colorIndex >= group.colors.length) return;
+  group.flows[colorIndex] = active;
+  group.revs[colorIndex] = rev;
+  draw();
+}
+
+// Set all edges inactive
+function setAllEdgesInactive() {
+  const groups = getEdgeGroups();
+  for (const groupId in groups) {
+    const group = groups[groupId];
+    group.flows = group.colors.map(() => false);
+    group.revs = group.colors.map(() => false);
+  }
+  draw();
+}
+
+// Get current state of a group (for debugging)
+function getEdgeGroupState(groupId) {
+  const groups = getEdgeGroups();
+  if (!groups[groupId]) return null;
+  const group = groups[groupId];
+  return {
+    colors: group.colors,
+    flows: group.flows,
+    revs: group.revs,
+  };
+}
+
+// Initialize
+if (container && svg) {
+    renderNodes();
+    draw();
+    window.addEventListener("resize", draw);
+}
