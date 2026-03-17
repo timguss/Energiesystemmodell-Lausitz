@@ -10,6 +10,13 @@ const nodeDetails = {
     coal: {
         subtitle: "Kraftwerk",
         description: "Das Kohlekraftwerk ist eine traditionelle Energieerzeugungsanlage, die Kohle zur Stromproduktion verwendet. Es verfügt über mehrere Relais zur Steuerung der Verbrennungsprozesse, Kühlung und Turbine.",
+        states: {
+            off: { label: "Aus", icon: "🏭" },
+            idle: { label: "Bereit", icon: "🏭" },
+            on: { label: "Betrieb", icon: "🏭🔥" },
+            error: { label: "Störung", icon: "🏭⚠️" }
+        },
+        currentState: "off",
         scenarios: [
             { name: "Starten", desc: "Kraftwerk hochfahren" },
             { name: "Stoppen", desc: "Kraftwerk herunterfahren" },
@@ -20,6 +27,13 @@ const nodeDetails = {
     village: {
         subtitle: "Wohngebiet",
         description: "Das Dorf repräsentiert den lokalen Energieverbrauch. Hier werden Haushalte mit Strom und Wärme versorgt. Der Energiebedarf variiert je nach Tageszeit und Jahreszeit.",
+        states: {
+            off: { label: "Kein Bedarf", icon: "🏘️" },
+            idle: { label: "Normal", icon: "🏘️" },
+            on: { label: "Hochlast", icon: "🏘️⚡" },
+            error: { label: "Störung", icon: "🏘️⚠️" }
+        },
+        currentState: "idle",
         scenarios: [
             { name: "Nachtmodus", desc: "Reduzierte Versorgung" },
             { name: "Tagmodus", desc: "Normale Versorgung" },
@@ -29,6 +43,13 @@ const nodeDetails = {
     solar: {
         subtitle: "Photovoltaik",
         description: "Die Solarenergieanlage wandelt Sonnenlicht direkt in elektrische Energie um. Die Leistung ist stark abhängig von der Sonneneinstrahlung und Wetterbedingungen.",
+        states: {
+            off: { label: "Inaktiv", icon: "☀️" },
+            idle: { label: "Bereit", icon: "☀️" },
+            on: { label: "Produktion", icon: "☀️⚡" },
+            error: { label: "Störung", icon: "☀️⚠️" }
+        },
+        currentState: "idle",
         scenarios: [
             { name: "Aktivieren", desc: "Einspeisung starten" },
             { name: "Deaktivieren", desc: "Einspeisung stoppen" },
@@ -38,6 +59,13 @@ const nodeDetails = {
     wind: {
         subtitle: "Windkraft",
         description: "Die Windkraftanlage nutzt die Windenergie zur Stromerzeugung. Die Leistung ist abhängig von der Windgeschwindigkeit und kann stark schwanken.",
+        states: {
+            off: { label: "Still", icon: "🌬️" },
+            idle: { label: "Leerlauf", icon: "🌬️" },
+            on: { label: "Produktion", icon: "🌬️⚡" },
+            error: { label: "Störung", icon: "🌬️⚠️" }
+        },
+        currentState: "idle",
         scenarios: [
             { name: "Starten", desc: "Turbine starten" },
             { name: "Stoppen", desc: "Turbine stoppen" },
@@ -47,6 +75,13 @@ const nodeDetails = {
     gridNode: {
         subtitle: "Verteilung",
         description: "Der Netzknoten ist das Herz der Energieverteilung. Hier werden alle Energieflüsse zusammengeführt und an die Verbraucher verteilt.",
+        states: {
+            off: { label: "Aus", icon: "⚡" },
+            idle: { label: "Bereit", icon: "⚡" },
+            on: { label: "Aktiv", icon: "⚡🔋" },
+            error: { label: "Störung", icon: "⚡⚠️" }
+        },
+        currentState: "on",
         scenarios: [
             { name: "Ausbalancieren", desc: "Netz optimieren" },
             { name: "Notfall", desc: "Sicherheitsmodus" },
@@ -56,6 +91,13 @@ const nodeDetails = {
     external: {
         subtitle: "Übertragung",
         description: "Der Stromnetzanschluss verbindet das lokale Energiesystem mit dem überregionalen Stromnetz. Überschüssige Energie kann eingespeist oder bezogen werden.",
+        states: {
+            off: { label: "Getrennt", icon: "🔌" },
+            idle: { label: "Bereit", icon: "🔌" },
+            on: { label: "Verbunden", icon: "🔌⚡" },
+            error: { label: "Störung", icon: "🔌⚠️" }
+        },
+        currentState: "on",
         scenarios: [
             { name: "Einspeisen", desc: "Energie abgeben" },
             { name: "Beziehen", desc: "Energie aufnehmen" },
@@ -65,6 +107,13 @@ const nodeDetails = {
     gas: {
         subtitle: "Kraftwerk",
         description: "Das Gaskraftwerk nutzt Erdgas zur Stromerzeugung. Es ist flexibel und kann schnell hoch- und heruntergefahren werden.",
+        states: {
+            off: { label: "Aus", icon: "🔥" },
+            idle: { label: "Bereit", icon: "🔥" },
+            on: { label: "Betrieb", icon: "🔥⚡" },
+            error: { label: "Störung", icon: "🔥⚠️" }
+        },
+        currentState: "off",
         scenarios: [
             { name: "Zünden", desc: "Anfahren" },
             { name: "Abstellen", desc: "Herunterfahren" },
@@ -75,6 +124,13 @@ const nodeDetails = {
     elektro: {
         subtitle: "Wasserstoff",
         description: "Die Elektrolyseanlage erzeugt Wasserstoff durch Spaltung von Wasser mittels elektrischer Energie.",
+        states: {
+            off: { label: "Aus", icon: "⚗️" },
+            idle: { label: "Bereit", icon: "⚗️" },
+            on: { label: "Produktion", icon: "⚗️💧" },
+            error: { label: "Störung", icon: "⚗️⚠️" }
+        },
+        currentState: "off",
         scenarios: [
             { name: "Starten", desc: "Produktion beginnen" },
             { name: "Stoppen", desc: "Produktion beenden" },
@@ -84,6 +140,13 @@ const nodeDetails = {
     heatpump: {
         subtitle: "Heizung",
         description: "Die Wärmepumpe nutzt Umweltwärme zur Erzeugung von Heizwärme. Sie ist eine effiziente Methode zur Gebäudeheizung.",
+        states: {
+            off: { label: "Aus", icon: "🌡️" },
+            idle: { label: "Standby", icon: "🌡️" },
+            on: { label: "Heizen", icon: "🌡️🔥" },
+            error: { label: "Störung", icon: "🌡️⚠️" }
+        },
+        currentState: "idle",
         scenarios: [
             { name: "Heizen", desc: "Heizbetrieb starten" },
             { name: "Kühlen", desc: "Kühlbetrieb aktivieren" },
@@ -230,17 +293,49 @@ function renderNodes() {
 }
 
 // Modal functions
+let currentNodeId = null;
+
 function openModal(nodeId) {
     const details = nodeDetails[nodeId];
     if (!details) return;
 
+    currentNodeId = nodeId;
+    const currentState = details.currentState || 'off';
+    const stateInfo = details.states?.[currentState] || { label: 'Unbekannt', icon: '⬡' };
+
     // Fill modal content
-    document.getElementById("modal-icon").textContent = nodeIcons[nodeId] || '⬡';
+    document.getElementById("modal-icon").textContent = stateInfo.icon;
     document.getElementById("modal-title").textContent = nodes[nodeId]?.label || nodeId;
     document.getElementById("modal-subtitle").textContent = details.subtitle;
-    document.getElementById("modal-visual-icon").textContent = nodeIcons[nodeId] || '⬡';
+    document.getElementById("modal-visual-icon").textContent = stateInfo.icon;
     document.getElementById("modal-visual-label").textContent = nodes[nodeId]?.label || nodeId;
     document.getElementById("modal-description").textContent = details.description;
+
+    // Update state indicator
+    const stateDot = document.getElementById("state-dot");
+    const stateLabel = document.getElementById("state-label");
+    stateDot.className = "state-dot " + currentState;
+    stateLabel.textContent = stateInfo.label;
+
+    // Update visual glow based on state
+    const visualIcon = document.getElementById("modal-visual-icon");
+    visualIcon.classList.remove("active-glow", "warning-glow", "error-glow");
+    if (currentState === 'on') visualIcon.classList.add("active-glow");
+    else if (currentState === 'idle') visualIcon.classList.add("warning-glow");
+    else if (currentState === 'error') visualIcon.classList.add("error-glow");
+
+    // Fill state buttons
+    const stateButtonsContainer = document.getElementById("state-buttons");
+    stateButtonsContainer.innerHTML = '';
+    if (details.states) {
+        Object.keys(details.states).forEach(stateKey => {
+            const btn = document.createElement("button");
+            btn.className = "state-btn" + (stateKey === currentState ? " active" : "");
+            btn.textContent = details.states[stateKey].label;
+            btn.onclick = () => setNodeState(nodeId, stateKey);
+            stateButtonsContainer.appendChild(btn);
+        });
+    }
 
     // Fill scenario buttons
     const scenarioContainer = document.getElementById("scenario-buttons");
@@ -258,9 +353,19 @@ function openModal(nodeId) {
     document.body.style.overflow = "hidden";
 }
 
+function setNodeState(nodeId, newState) {
+    const details = nodeDetails[nodeId];
+    if (!details || !details.states) return;
+
+    details.currentState = newState;
+    openModal(nodeId); // Re-render modal with new state
+    draw(); // Redraw lines with new flow directions
+}
+
 function closeModal() {
     modalOverlay.classList.remove("active");
     document.body.style.overflow = "";
+    currentNodeId = null;
 }
 
 // Modal event listeners
@@ -272,10 +377,84 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeModal();
 });
 
+// Helper: Check if a node produces energy (on state)
+function nodeProducesEnergy(nodeId) {
+    const details = nodeDetails[nodeId];
+    if (!details) return false;
+    return details.currentState === 'on';
+}
+
+// Helper: Get producer node for a chain (traces back from routing nodes)
+function getProducerForEdge(edge) {
+    // Map of routing nodes to their source
+    const routingSources = {
+        'r_coal_bend': 'coal',
+        'r_gas_bend': 'gas',
+        'r_solar_mid': 'solar',
+        'r_top_left': null,
+        'r_top_right': null,
+        'r_elek_mid': 'village',
+        'r_heat_mid': 'gridNode'
+    };
+
+    const from = edge.from;
+    const to = edge.to;
+
+    // If from is a routing node, check its source
+    if (routingSources[from]) {
+        return nodeProducesEnergy(routingSources[from]);
+    }
+
+    // If from is a producer node
+    if (nodeDetails[from]) {
+        return nodeProducesEnergy(from);
+    }
+
+    return false;
+}
+
+// Helper: Get flow direction based on node states
+function getFlowDirection(edge) {
+    const sourceOn = nodeProducesEnergy(edge.from);
+    const targetOn = nodeProducesEnergy(edge.to);
+    const producerOn = getProducerForEdge(edge);
+
+    // If the source (or its upstream producer) produces energy, flow goes FROM -> TO
+    if (sourceOn || producerOn) {
+        return { flow: true, rev: false };
+    }
+
+    // If source doesn't produce but target produces (backflow)
+    if (targetOn) {
+        if (['gridNode', 'external'].includes(edge.to)) {
+            return { flow: true, rev: true };
+        }
+    }
+
+    // No flow if neither produces
+    return { flow: false, rev: false };
+}
+
 function draw() {
     svg.innerHTML = "";
     const W = container.clientWidth, H = container.clientHeight;
-    edges.forEach(e => drawEdge(e, W, H));
+
+    // Pre-calculate flow directions for all edges
+    const edgeFlows = {};
+    edges.forEach((e, idx) => {
+        edgeFlows[idx] = getFlowDirection(e);
+    });
+
+    edges.forEach((e, idx) => {
+        const flowInfo = edgeFlows[idx];
+        // Override edge flow properties based on state
+        const modifiedEdge = {
+            ...e,
+            flow: flowInfo.flow,
+            rev: flowInfo.rev
+        };
+        drawEdge(modifiedEdge, W, H);
+    });
 }
 
 // Initialize
