@@ -13,6 +13,19 @@ function openModal(nodeId) {
   if (!details) return;
 
   currentNodeId = nodeId;
+  updateModalState(nodeId);
+
+  // Show modal
+  modalOverlay.classList.add("active");
+  document.body.style.overflow = "hidden";
+}
+
+// Function to refresh modal content without closing/reopening
+function updateModalState(nodeId) {
+  if (currentNodeId !== nodeId) return;
+  const details = nodeDetails[nodeId];
+  if (!details) return;
+
   const currentState = details.currentState || "off";
   const stateInfo = details.states?.[currentState] || {
     label: "Unbekannt",
@@ -60,26 +73,45 @@ function openModal(nodeId) {
   // Fill scenario buttons
   const scenarioContainer = document.getElementById("scenario-buttons");
   scenarioContainer.innerHTML = "";
-  details.scenarios.forEach((scenario) => {
-    const btn = document.createElement("button");
-    btn.className = "scenario-btn";
-    btn.innerHTML = `<span class="scenario-name">${scenario.name}</span><span class="scenario-desc">${scenario.desc}</span>`;
-    // Not linked yet - just visual
-    scenarioContainer.appendChild(btn);
-  });
+  if (details.scenarios) {
+    details.scenarios.forEach((scenario) => {
+      const btn = document.createElement("button");
+      btn.className = "scenario-btn";
+      btn.innerHTML = `<span class="scenario-name">${scenario.name}</span><span class="scenario-desc">${scenario.desc}</span>`;
+      btn.onclick = () => runScenario(scenario.id);
+      scenarioContainer.appendChild(btn);
+    });
+  }
+}
 
-  // Show modal
-  modalOverlay.classList.add("active");
-  document.body.style.overflow = "hidden";
+async function runScenario(scenarioId) {
+    if (!currentNodeId) return;
+    const sid = scenarioId.toLowerCase();
+    console.log(`Executing optical scenario: ${sid} for ${currentNodeId}`);
+    
+    // Purely visual logic
+    if (sid === "tank_in_brennstoffzelle") {
+         nodeDetails[currentNodeId].currentState = "on_fuelcell";
+    } else if (sid.includes("startup") || sid.includes("_an") || sid.includes("import") || sid.includes("peak") || sid.includes("day") || sid.includes("heizen")) {
+        nodeDetails[currentNodeId].currentState = "on";
+    } else if (sid.includes("shutdown") || sid.includes("_aus") || sid.includes("notaus") || sid.includes("off") || sid.includes("night") || sid.includes("standby")) {
+        nodeDetails[currentNodeId].currentState = "off";
+    }
+    
+    updateModalState(currentNodeId);
+    draw();
 }
 
 function setNodeState(nodeId, newState) {
   const details = nodeDetails[nodeId];
   if (!details || !details.states) return;
 
+  // Optimization: If it's a manual state change, we could send a relay command.
+  // But for now, let's just update local state and let polling or manual refresh happen.
+  // Most nodes are controlled via scenarios.
   details.currentState = newState;
-  openModal(nodeId); // Re-render modal with new state
-  draw(); // Redraw lines with new flow directions
+  updateModalState(nodeId); 
+  draw(); 
 }
 
 function closeModal() {

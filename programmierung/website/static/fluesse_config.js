@@ -17,10 +17,9 @@ const nodeDetails = {
       },
       currentState: "off",
       scenarios: [
-        { name: "Starten", desc: "Kraftwerk hochfahren" },
-        { name: "Stoppen", desc: "Kraftwerk herunterfahren" },
-        { name: "Testlauf", desc: "Alle Systeme testen" },
-        { name: "Not-Aus", desc: "Sofortige Abschaltung" },
+        { id: "kohlekraftwerk_startup", name: "Starten", desc: "Kraftwerk hochfahren" },
+        { id: "kohlekraftwerk_shutdown", name: "Stoppen", desc: "Kraftwerk herunterfahren" },
+        { id: "notaus", name: "Not-Aus", desc: "Sofortige Abschaltung" },
       ],
     },
     village: {
@@ -35,9 +34,9 @@ const nodeDetails = {
       },
       currentState: "idle",
       scenarios: [
-        { name: "Nachtmodus", desc: "Reduzierte Versorgung" },
-        { name: "Tagmodus", desc: "Normale Versorgung" },
-        { name: "Spitzenlast", desc: "Hoher Energiebedarf" },
+        { id: "village_day", name: "Tagmodus", desc: "Normaler Verbrauch" },
+        { id: "village_night", name: "Nachtmodus", desc: "Reduzierter Verbrauch" },
+        { id: "village_peak", name: "Spitzenlast", desc: "Maximaler Bedarf" },
       ],
     },
     solar: {
@@ -52,9 +51,8 @@ const nodeDetails = {
       },
       currentState: "idle",
       scenarios: [
-        { name: "Aktivieren", desc: "Einspeisung starten" },
-        { name: "Deaktivieren", desc: "Einspeisung stoppen" },
-        { name: "Maximum", desc: "Volle Leistung" },
+        { id: "solar_an", name: "Einschalten", desc: "Produktion starten" },
+        { id: "solar_aus", name: "Ausschalten", desc: "Produktion stoppen" },
       ],
     },
     wind: {
@@ -69,9 +67,8 @@ const nodeDetails = {
       },
       currentState: "idle",
       scenarios: [
-        { name: "Starten", desc: "Turbine starten" },
-        { name: "Stoppen", desc: "Turbine stoppen" },
-        { name: "Leerlauf", desc: "Minimaler Betrieb" },
+        { id: "wind_an", name: "Starten", desc: "Turbine hochfahren" },
+        { id: "wind_aus", name: "Stoppen", desc: "Bremse aktivieren" },
       ],
     },
     gridNode: {
@@ -86,9 +83,7 @@ const nodeDetails = {
       },
       currentState: "on",
       scenarios: [
-        { name: "Ausbalancieren", desc: "Netz optimieren" },
-        { name: "Notfall", desc: "Sicherheitsmodus" },
-        { name: "Diagnose", desc: "Netzwerk prüfen" },
+        { id: "notaus", name: "Notaus (Global)", desc: "Systemweiter Notstopp" },
       ],
     },
     external: {
@@ -103,9 +98,9 @@ const nodeDetails = {
       },
       currentState: "on",
       scenarios: [
-        { name: "Einspeisen", desc: "Energie abgeben" },
-        { name: "Beziehen", desc: "Energie aufnehmen" },
-        { name: "Isoliert", desc: "Autark betreiben" },
+        { id: "grid_import", name: "Beziehen", desc: "Energie aus Netz laden" },
+        { id: "grid_export", name: "Einspeisen", desc: "Überschuss abgeben" },
+        { id: "grid_off", name: "Inselbetrieb", desc: "Vom Netz trennen" },
       ],
     },
     gas: {
@@ -120,27 +115,28 @@ const nodeDetails = {
       },
       currentState: "off",
       scenarios: [
-        { name: "Zünden", desc: "Anfahren" },
-        { name: "Abstellen", desc: "Herunterfahren" },
-        { name: "Teillast", desc: "Reduzierte Leistung" },
-        { name: "Volllast", desc: "Maximale Leistung" },
+        { id: "gas_an", name: "Zünden", desc: "Kraftwerk starten" },
+        { id: "gas_aus", name: "Abstellen", desc: "Kraftwerk stoppen" },
+        { id: "notaus", name: "Not-Aus", desc: "Sofortige Abschaltung" },
       ],
     },
     elektro: {
       subtitle: "Wasserstoff",
       description:
-        "Die Elektrolyseanlage erzeugt Wasserstoff durch Spaltung von Wasser mittels elektrischer Energie.",
+        "Die Elektrolyseanlage erzeugt Wasserstoff durch Spaltung von Wasser mittels elektrischer Energie. Im Brennstoffzellen-Modus wird Wasserstoff zur Stromerzeugung genutzt.",
       states: {
         off: { label: "Aus", icon: "⚗️" },
         idle: { label: "Bereit", icon: "⚗️" },
-        on: { label: "Produktion", icon: "⚗️💧" },
+        on: { label: "Elektrolyse", icon: "⚗️💧" },
+        on_fuelcell: { label: "Brennstoffzelle", icon: "🔋⚡" },
         error: { label: "Störung", icon: "⚗️⚠️" },
       },
       currentState: "off",
       scenarios: [
-        { name: "Starten", desc: "Produktion beginnen" },
-        { name: "Stoppen", desc: "Produktion beenden" },
-        { name: "Sparmodus", desc: "Minimaler Betrieb" },
+        { id: "elektrolyseur_an", name: "Starten", desc: "H2 Produktion beginnen" },
+        { id: "elektrolyseur_komplett_aus", name: "Stoppen", desc: "System abschalten" },
+        { id: "elektrolyseur_in_tank", name: "Abfüllen", desc: "H2 in Tank speichern" },
+        { id: "tank_in_brennstoffzelle", name: "H2 nutzen", desc: "Strom aus H2 gewinnen" },
       ],
     },
     heatpump: {
@@ -155,10 +151,8 @@ const nodeDetails = {
       },
       currentState: "idle",
       scenarios: [
-        { name: "Heizen", desc: "Heizbetrieb starten" },
-        { name: "Kühlen", desc: "Kühlbetrieb aktivieren" },
-        { name: "Standby", desc: "Bereitschaftsmodus" },
-        { name: "Abtauen", desc: "Frostschutz" },
+        { id: "heatpump_an", name: "Heizen", desc: "Wärmepumpe starten" },
+        { id: "heatpump_aus", name: "Stoppen", desc: "Wärmepumpe abschalten" },
       ],
     },
   };
