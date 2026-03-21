@@ -70,13 +70,8 @@ function updateEdgeGroupStates() {
     groups.gridToExternal.flows = [gridHasPower, externalActive];
     groups.gridToExternal.revs = [false, true];
   
-    // Grid to Mid - flows when heatpump draws power OR coal pushes power
-    const heatpumpActive = nodeProducesEnergy("heatpump");
-    groups.gridToMid.flows = [heatpumpActive || coalActive];
-    // Reverse if coal is pushing TO the grid from the mid point
-    groups.gridToMid.revs = [coalActive];
-  
     // Heatpump
+    const heatpumpActive = nodeProducesEnergy("heatpump");
     groups.heatpump.flows = [heatpumpActive];
     groups.heatpump.revs = [false]; // Consumer: mid -> heatpump
   
