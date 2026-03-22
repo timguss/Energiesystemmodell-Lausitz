@@ -9,6 +9,7 @@ from routes.relays    import relays_bp
 from routes.scenarios import scenarios_bp
 from routes.esp3      import esp3_bp
 from routes.debug     import debug_bp
+from routes.leds      import leds_bp
 
 # ============================================================================
 # FLASK APP
@@ -25,6 +26,7 @@ app.register_blueprint(relays_bp)
 app.register_blueprint(scenarios_bp)
 app.register_blueprint(esp3_bp)
 app.register_blueprint(debug_bp)
+app.register_blueprint(leds_bp)
 
 # ============================================================================
 # FRONTEND ROUTES

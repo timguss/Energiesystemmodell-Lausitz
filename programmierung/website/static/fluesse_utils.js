@@ -72,8 +72,8 @@ function updateEdgeGroupStates() {
   
     // Heatpump
     const heatpumpActive = nodeProducesEnergy("heatpump");
-    groups.heatpump.flows = [heatpumpActive];
-    groups.heatpump.revs = [false]; // Consumer: mid -> heatpump
+    groups.heatpump.flows = [heatpumpActive, heatpumpActive];
+    groups.heatpump.revs = [false, true]; // Consumer: mid -> heatpump
   
     // Elektro - single stripe
     const elektroState = nodeDetails.elektro.currentState;

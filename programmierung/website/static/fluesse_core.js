@@ -149,6 +149,40 @@ function draw() {
   for (const groupId in getEdgeGroups()) {
     drawEdgeGroup(groupId, W, H);
   }
+
+  // Sync with physical LEDs on ESP5
+  syncLeds();
+}
+
+let lastSyncTime = 0;
+let lastFlowState = "";
+
+async function syncLeds() {
+    const now = Date.now();
+    if (now - lastSyncTime < 1000) return; // Throttle to 1Hz
+    
+    const groups = getEdgeGroups();
+    const flows = {};
+    for (const id in groups) {
+      // Send the entire flows array [true, false, ...] for multi-stripe support
+      flows[id] = groups[id].flows;
+    }
+
+    const stateStr = JSON.stringify(flows);
+    if (stateStr === lastFlowState) return; // Only sync on change
+    
+    lastSyncTime = now;
+    lastFlowState = stateStr;
+
+    try {
+        await fetch("/api/leds/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ flows })
+        });
+    } catch (e) {
+        console.error("LED Sync Error:", e);
+    }
 }
 
 // Switch between power and heat systems

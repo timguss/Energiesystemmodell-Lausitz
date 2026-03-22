@@ -24,6 +24,7 @@ uint8_t MAC_ESP1[6] = {0x84, 0x1F, 0xE8, 0x26, 0x58, 0xD8};
 uint8_t MAC_ESP2[6] = {0x20, 0x43, 0xA8, 0x6A, 0xFB, 0xDC};
 uint8_t MAC_ESP3[6] = {0x20, 0xE7, 0xC8, 0x6B, 0x4F, 0x18};
 uint8_t MAC_ESP4[6] = {0x8C, 0x4F, 0x00, 0x2E, 0x59, 0xE8};
+uint8_t MAC_ESP5[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // TODO: MAC von ESP5 eintragen
 
 // ============================================================================
 // WIFI AP
@@ -75,7 +76,7 @@ struct ClientState {
   volatile uint8_t  rs232WaitSeq; // Sequenznummer auf die wir warten
 };
 
-ClientState clientStates[4]; // Index: 0=esp1, 1=esp2, 2=esp3, 3=esp4
+ClientState clientStates[5]; // Index: 0=esp1, 1=esp2, 2=esp3, 3=esp4, 4=esp5
 
 // Hilfsfunktion: Index eines Clients anhand des Namens
 int clientIndex(const char* name) {
@@ -83,6 +84,7 @@ int clientIndex(const char* name) {
   if (strcmp(name, "esp2") == 0) return 1;
   if (strcmp(name, "esp3") == 0) return 2;
   if (strcmp(name, "esp4") == 0) return 3;
+  if (strcmp(name, "esp5") == 0) return 4;
   return -1;
 }
 
@@ -92,12 +94,13 @@ uint8_t* clientMAC(int idx) {
     case 1: return MAC_ESP2;
     case 2: return MAC_ESP3;
     case 3: return MAC_ESP4;
+    case 4: return MAC_ESP5;
     default: return nullptr;
   }
 }
 
 // Eindeutiger Bezeichner pro Client
-const char* CLIENT_NAMES[4] = {"esp1", "esp2", "esp3", "esp4"};
+const char* CLIENT_NAMES[5] = {"esp1", "esp2", "esp3", "esp4", "esp5"};
 
 // ============================================================================
 // ESP-NOW CALLBACKS
@@ -209,8 +212,8 @@ void scenario_alles(int state) {
 void handleClients() {
   unsigned long now = millis();
   String json = "{\"clients\":[";
-  bool first = true;
-  for (int i = 0; i < 4; i++) {
+  int first = true;
+  for (int i = 0; i < 5; i++) {
     // Client als offline markieren wenn > 10s kein Heartbeat
     if (clientStates[i].online && (now - clientStates[i].lastSeen > 10000)) {
       clientStates[i].online = false;
@@ -303,6 +306,30 @@ void handleForward() {
     int ci = clientIndex(target.c_str());
     clientStates[ci].ackRelayIdx = -1; // Kennung für RS232-Wait
     success = sendCmd(target.c_str(), "RS232", 0, timeoutMs, 0, cmd.c_str());
+
+  } else if (path.startsWith("/led?")) {
+    // LED: /led?strip=S&start=A&end=B&val=V&r=R&g=G&b=B
+    // Forward as raw payload "S|A|B|V|R|G|B"
+    int stripPos = path.indexOf("strip=") + 6;
+    int startPos = path.indexOf("start=") + 6;
+    int endPos   = path.indexOf("end=") + 4;
+    int valPos   = path.indexOf("val=") + 4;
+    int rPos     = path.indexOf("r=") + 2;
+    int gPos     = path.indexOf("g=") + 2;
+    int bPos     = path.indexOf("b=") + 2;
+
+    String payload = "";
+    auto getPart = [&](int pos) {
+      if (pos < 2) return String("0");
+      int nextAmp = path.indexOf('&', pos);
+      return (nextAmp > 0) ? path.substring(pos, nextAmp) : path.substring(pos);
+    };
+
+    payload = getPart(stripPos) + "|" + getPart(startPos) + "|" + getPart(endPos) + "|" +
+              getPart(valPos) + "|" + getPart(rPos) + "|" + getPart(gPos) + "|" + getPart(bPos);
+
+    Serial.printf("[LED] Forwarding to %s: %s\n", target.c_str(), payload.c_str());
+    success = sendCmd(target.c_str(), "LED", 0, 0, 0, payload.c_str());
 
   } else {
     server.send(400, "application/json", "{\"error\":\"Unknown path\"}");
@@ -469,7 +496,7 @@ void handleRoot() {
   String html = "<html><body><h1>ESP-Host</h1>";
   html += "<p>AP: " + String(AP_SSID) + " | Kanal: " + String(AP_CHANNEL) + "</p>";
   html += "<h2>Client Status:</h2><ul>";
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     html += "<li>" + String(CLIENT_NAMES[i]) + ": ";
     html += clientStates[i].online ? "ONLINE" : "OFFLINE";
     if (clientStates[i].online) {
@@ -502,7 +529,7 @@ void setup() {
   Serial.println("\n=== ESP-Host startet ===");
 
   // Clients initialisieren
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     memset(&clientStates[i], 0, sizeof(ClientState));
     clientStates[i].status.temp = NAN;
   }
@@ -527,6 +554,7 @@ void setup() {
   registerPeer(MAC_ESP2);
   registerPeer(MAC_ESP3);
   registerPeer(MAC_ESP4);
+  registerPeer(MAC_ESP5);
   Serial.println("[ESP-NOW] Peers registriert");
 
   // HTTP Server (für Raspberry Pi — unveränderte API)
@@ -539,6 +567,7 @@ void setup() {
   server.on("/state/esp2", HTTP_GET, handleDeviceState);
   server.on("/state/esp3", HTTP_GET, handleDeviceState);
   server.on("/state/esp4", HTTP_GET, handleDeviceState);
+  server.on("/state/esp5", HTTP_GET, handleDeviceState);
   server.begin();
 
   Serial.println("=== ESP-Host bereit ===\n");
@@ -553,7 +582,7 @@ void loop() {
 
   // Timeout-Check: Client als offline markieren wenn > 10s kein Heartbeat
   unsigned long now = millis();
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     if (clientStates[i].online && (now - clientStates[i].lastSeen > 10000)) {
       clientStates[i].online = false;
       Serial.printf("[TIMEOUT] %s offline\n", CLIENT_NAMES[i]);

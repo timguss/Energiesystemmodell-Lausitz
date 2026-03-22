@@ -123,4 +123,29 @@ def load_scenarios():
         print(f"[ERROR] Loading scenarios.json failed: {e}")
         return {}
 
+# ============================================================================
+# LED MAPPING (ESP5)
+# ============================================================================
+# Maps flow identifiers to (strip, start, end, color_rgb)
+LED_MAPPING = {
+    "coal": [
+        {"strip": 0, "range": (0, 40),  "color": (100, 100, 100)},
+        {"strip": 1, "range": (0, 40),  "color": (100, 100, 100)},
+    ],
+    "solar":    {"strip": 2, "range": (0, 40),  "color": (0, 255, 0)},
+    "wind":     {"strip": 2, "range": (0, 20),  "color": (150, 150, 150)}, # split strip 2?
+    "gas":      {"strip": 5, "range": (0, 40),  "color": (255, 100, 0)},
+    "village":  {"strip": 6, "range": (0, 40),  "color": (0, 0, 255)},
+    # Main Grid (Long Strips 3 & 4)
+    "gridToExternal": [
+        {"strip": 3, "range": (0, 120), "color": (255, 255, 0)},
+        {"strip": 4, "range": (0, 120), "color": (255, 255, 0)},
+    ],
+    "heatpump": [
+        {"strip": 3, "range": (0, 60),  "color": (255, 0, 0)},
+        {"strip": 4, "range": (0, 60),  "color": (255, 0, 0)},
+    ],
+    "elektro":  {"strip": 5, "range": (20, 40), "color": (0, 255, 255)},
+}
+
 SCENARIOS = load_scenarios()

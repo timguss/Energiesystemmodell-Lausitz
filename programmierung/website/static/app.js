@@ -26,7 +26,8 @@
     esp1: false,
     esp2: false,
     esp3: false,
-    esp4: false
+    esp4: false,
+    esp5: false
   };
 
   let deviceFailCount = {
@@ -34,15 +35,16 @@
     esp1: 0,
     esp2: 0,
     esp3: 0,
-    esp4: 0
+    esp4: 0,
+    esp5: 0
   };
 
   let showAllDevices = false;
 
   // Selective polling state
   const FIRST_BOOT_TIME = Date.now();
-  const espConnectedHistory = { esp1: false, esp2: false, esp3: false, esp4: false };
-  const espManualTry = { esp1: false, esp2: false, esp3: false, esp4: false };
+  const espConnectedHistory = { esp1: false, esp2: false, esp3: false, esp4: false, esp5: false };
+  const espManualTry = { esp1: false, esp2: false, esp3: false, esp4: false, esp5: false };
 
   // ============================================================================
   // UTILITY FUNCTIONS
@@ -127,19 +129,22 @@
       esp1: ['card_esp1_relays', 'card_rs232'],
       esp2: ['card_esp2_relays'],
       esp3: ['card_esp3'],
-      esp4: ['card_esp4_relays', 'card_esp4_sensors']
+      esp4: ['card_esp4_relays', 'card_esp4_sensors'],
+      esp5: ['card_esp5']
     };
 
     const showEsp1 = showAllDevices || deviceStatus.esp1;
     const showEsp2 = showAllDevices || deviceStatus.esp2;
     const showEsp3 = showAllDevices || deviceStatus.esp3;
     const showEsp4 = showAllDevices || deviceStatus.esp4;
+    const showEsp5 = showAllDevices || deviceStatus.esp5;
     const showTemp = showAllDevices || deviceStatus.esp1 || deviceStatus.esp2;
 
     cards.esp1.forEach(id => safeSetDisplay(id, showEsp1));
     cards.esp2.forEach(id => safeSetDisplay(id, showEsp2));
     cards.esp3.forEach(id => safeSetDisplay(id, showEsp3));
     cards.esp4.forEach(id => safeSetDisplay(id, showEsp4));
+    cards.esp5.forEach(id => safeSetDisplay(id, showEsp5));
     safeSetDisplay('card_temp', showTemp);
   }
 
@@ -655,6 +660,19 @@
     }
   }
 
+  async function testLeds(mode) {
+    try {
+      await fetch('/api/leds/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode })
+      });
+    } catch (e) {
+      console.error('LED test failure:', e);
+      alert('LED Test fehlgeschlagen: ' + e);
+    }
+  }
+
   // ============================================================================
   // TEMPERATURE & SENSORS
   // ============================================================================
@@ -707,7 +725,7 @@
   async function refreshAll() {
     await checkHostStatus();
 
-    ['esp1', 'esp2', 'esp3', 'esp4'].forEach(d => updateConnectButtonVisibility(d));
+    ['esp1', 'esp2', 'esp3', 'esp4', 'esp5'].forEach(d => updateConnectButtonVisibility(d));
 
     if (shouldPollEsp('esp4')) {
       const state4 = await fetchState('esp4');
@@ -740,6 +758,12 @@
         refreshRelayCheckboxes('esp3', state3);
         updateEsp3LegacyUI(state3);
         updateTemps('esp3', state3);
+      }
+    }
+    if (shouldPollEsp('esp5')) {
+      const state5 = await fetchState('esp5');
+      if (state5) {
+        // No specific UI components to initialize for ESP5 yet beyond status
       }
     }
   }
@@ -781,6 +805,7 @@
   window.stopTrain = stopTrain;
   window.updateRsCommand = updateRsCommand;
   window.sendRs = sendRs;
+  window.testLeds = testLeds;
   window.cleanup = cleanup;
 
   // Start
