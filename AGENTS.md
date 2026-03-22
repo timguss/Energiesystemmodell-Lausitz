@@ -31,11 +31,12 @@ The web UI runs at `http://localhost:8000`. The dashboard shows all devices and 
   - `ESP_2.ino` — Coal power plant controller (4 relays + temp)
   - `ESP_3.ino` — Wind/additional controller (4 relays + PWM)
   - `ESP_4.ino` — Electrolyzer controller (5 relays + pressure/flow sensors)
+  - `ESP_5.ino` — LED controller (7 LED strips for energy flow visualization)
 
 ## Architecture
 
 ```
-[Flask Web App] <--HTTP--> [ESP_Host] <--Serial/Forward--> [ESP_1, ESP_2, ESP_3, ESP_4]
+[Flask Web App] <--HTTP--> [ESP_Host] <--Serial/Forward--> [ESP_1, ESP_2, ESP_3, ESP_4, ESP_5]
 ```
 
 ### Communication Flow
@@ -52,6 +53,7 @@ The web UI runs at `http://localhost:8000`. The dashboard shows all devices and 
 | `esp_client.py` | HTTP client for ESP Host communication |
 | `routes/relays.py` | API endpoints for relay/sensor control |
 | `routes/scenarios.py` | Execute predefined scenario sequences |
+| `routes/leds.py` | API for LED synchronization and testing |
 | `scenarios.json` | JSON definitions for automated actions |
 
 ### Relay Mapping (from config.py)
@@ -73,6 +75,8 @@ The web UI runs at `http://localhost:8000`. The dashboard shows all devices and 
 - `GET /api/device_meta/<device>` — Get device relay names
 - `POST /api/relay/set` — Set relay state (`{"global_idx": N, "val": 0/1}`)
 - `POST /api/scenario/run` — Execute scenario from scenarios.json
+- `POST /api/leds/sync` — Sync energy flow states with ESP5 strips
+- `POST /api/leds/test` — Hardware test for LED strips (`{"mode": "green"/"off"}`)
 
 ## Debug Mode
 

@@ -56,13 +56,13 @@ Users interact with the system through two frontend interfaces:
 └──┬──────┬──────┬───┬───┘
    │      │      │   │
    │   ESP-NOW   │   │
-┌──▼─┐ ┌──▼─┐ ┌─▼─┐ ┌▼──┐
-│ESP1│ │ESP2│ │ESP3│ │ESP4│
-│8x  │ │4x  │ │4x  │ │5x  │
-│Relay│ │Relay│ │Relay│ │Relay│
-│NTC │ │NTC │ │Motor│ │5x  │
-│RS232│ │    │ │Wind │ │Sensor│
-└────┘ └────┘ └────┘ └────┘
+┌──▼─┐ ┌──▼─┐ ┌─▼─┐ ┌▼──┐ ┌─▼─┐
+│ESP1│ │ESP2│ │ESP3│ │ESP4│ │ESP5│
+│8x  │ │4x  │ │4x  │ │5x  │ │7x  │
+│Relay│ │Relay│ │Relay│ │Relay│ │Strip│
+│NTC │ │NTC │ │Motor│ │5x  │ │    │
+│RS232│ │    │ │Wind │ │Sensor│ │    │
+└────┘ └────┘ └────┘ └────┘ └────┘
 ```
 
 ### Communication Flow
@@ -89,6 +89,7 @@ ESP-NOW allows direct peer-to-peer communication between ESP32 devices without r
 - **Motor PWM control** — Variable-speed and direction control of a DC motor on ESP3
 - **Wind pin control** — Digital on/off control of a wind output on ESP3
 - **RS232 communication** — Send raw serial commands to an MFC (Mass Flow Controller) via ESP1
+- **LED flow visualization** — Physical LED strips on ESP5 dynamically mirror website energy flows
 - **ACK-based relay confirmation** — The Host waits up to 1500 ms for a relay state acknowledgment from the client before confirming success
 - **Device online/offline tracking** — Automatic offline detection after 10 seconds without heartbeat
 - **Two UI modes** — Thematic landing page for operators; technical dashboard for developers/engineers
@@ -107,6 +108,7 @@ ESP-NOW allows direct peer-to-peer communication between ESP32 devices without r
 | ESP2     | Coal plant controller    | 4      | NTC temperature               |
 | ESP3     | Wind / Train controller  | 4      | DC motor (L298N), wind pin    |
 | ESP4     | Electrolyzer controller  | 5      | 5× 4–20 mA sensors, flow meter |
+| ESP5     | LED Strip controller     | —      | 7× WS2812B strips for flows    |
 
 ### Relays
 
@@ -136,7 +138,7 @@ ESP-NOW allows direct peer-to-peer communication between ESP32 devices without r
 ### Backend
 - **Python 3** with **Flask 3.0**
 - **Requests 2.31** for HTTP communication with the ESP Host
-- Blueprint-based modular routing (`routes/relays.py`, `routes/scenarios.py`, `routes/esp3.py`, `routes/debug.py`)
+- Blueprint-based modular routing (`routes/relays.py`, `routes/scenarios.py`, `routes/leds.py`, `routes/esp3.py`, `routes/debug.py`)
 
 ### Frontend
 - Vanilla **HTML5 / CSS3 / JavaScript** (no framework dependencies)
@@ -154,7 +156,7 @@ ESP-NOW allows direct peer-to-peer communication between ESP32 devices without r
 |--------------------|----------------|-------------------------------------|
 | Browser → Flask    | HTTP REST      | Browser and Flask server            |
 | Flask → ESP Host   | HTTP (port 80) | Flask server and ESP Host WiFi AP   |
-| ESP Host → Clients | ESP-NOW        | ESP Host and ESP1–4 (peer-to-peer)  |
+| ESP Host → Clients | ESP-NOW        | ESP Host and ESP1–5 (peer-to-peer)  |
 | ESP1 ↔ MFC         | RS232 / UART2  | ESP1 and Mass Flow Controller       |
 
 ---
@@ -186,6 +188,7 @@ uint8_t MAC_ESP1[6] = {0x84, 0x1F, 0xE8, 0x26, 0x58, 0xD8};
 uint8_t MAC_ESP2[6] = {0x20, 0x43, 0xA8, 0x6A, 0xFB, 0xDC};
 uint8_t MAC_ESP3[6] = {0x20, 0xE7, 0xC8, 0x6B, 0x4F, 0x18};
 uint8_t MAC_ESP4[6] = {0x8C, 0x4F, 0x00, 0x2E, 0x59, 0xE8};
+uint8_t MAC_ESP5[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // Update with ESP5 MAC
 ```
 
 Then flash the Host ESP.
@@ -328,6 +331,8 @@ All endpoints are served by the Flask server on port 8000.
 | Method | Endpoint      | Body                                   | Description                       |
 |--------|---------------|----------------------------------------|-----------------------------------|
 | POST   | `/api/rs232`  | `{ "cmd": ":06030101213E80", "timeout": 500 }` | Send raw RS232 command via ESP1 |
+| POST   | `/api/leds/sync` | `{ "flows": { "coal": [true], ... } }` | Sync flows with ESP5 strips |
+| POST   | `/api/leds/test` | `{ "mode": "green" }` | Hardware test for all LEDs |
 
 ### Debug / Status
 
@@ -356,6 +361,8 @@ All endpoints are served by the Flask server on port 8000.
     │   │   └── ESP_3.ino            # 4× relay, DC motor, wind output
     │   ├── ESP_4/
     │   │   └── ESP_4.ino            # 5× relay, 5× 4–20mA sensors, flow meter
+    │   ├── ESP_5/
+    │   │   └── ESP_5.ino            # 7× LED strip controller
     │   ├── Drucksensoren/
     │   │   └── Drucksensoren.ino    # Standalone pressure sensor test sketch
     │   ├── Ralays-4/
